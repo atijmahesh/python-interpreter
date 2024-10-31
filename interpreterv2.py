@@ -64,31 +64,30 @@ class Interpreter(InterpreterBase):
             return self.__call_input(call_node)
 
         if func_name in self.func_name_to_ast:
-            return self.__execute_function(func_name, call_node.get("args"))
+            args = call_node.get("args") or []
+            return self.__execute_function(func_name, args)
 
         super().error(ErrorType.NAME_ERROR, f"Function {func_name} not found")
 
     def __execute_function(self, func_name, args):
         func_def = self.__get_func_by_name(func_name)
-        param_asts = func_def.get("params")
+        param_asts = func_def.get("args") 
         param_names = [param.get("name") for param in param_asts] if param_asts else []
 
         if len(args) != len(param_names):
             super().error(ErrorType.TYPE_ERROR, f"Incorrect number of arguments for function {func_name}")
         # Evaluate args
         arg_values = [self.__eval_expr(arg) for arg in args]
-        # Add new env scope
+        # CITATION: CHATGPT helped me write lines 81-92 (11 lines)
         self.env.push()
         for param_name, arg_value in zip(param_names, arg_values):
             self.env.create(param_name, arg_value)
         # Execute function
-        #CITATION: CHATGPT helped me with these 10 lines of code to mess w/env
         try:
             self.__run_statements(func_def.get("statements"))
         except ReturnException as e:
             self.env.pop()
             return e.value
-
         self.env.pop()
         return Value(Type.NIL, None)  # Return NIL if no return value
 
