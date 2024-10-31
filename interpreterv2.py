@@ -1,6 +1,3 @@
-# Add to spec:
-# - printing out a nil value is undefined
-
 from env_v1 import EnvironmentManager
 from type_valuev1 import Type, Value, create_value, get_printable
 from intbase import InterpreterBase, ErrorType
@@ -10,7 +7,8 @@ from brewparse import parse_program
 # Main interpreter class
 class Interpreter(InterpreterBase):
     # constants
-    BIN_OPS = {"+", "-"}
+    BIN_OPS = {"+", "-", "*", "/", "==", "!=", "<", "<=", ">", ">="}
+    UNARY_OPS = {"-"}
 
     # methods
     def __init__(self, console_output=True, inp=None, trace_output=False):
@@ -49,7 +47,6 @@ class Interpreter(InterpreterBase):
                 self.__assign(statement)
             elif statement.elem_type == InterpreterBase.VAR_DEF_NODE:
                 self.__var_def(statement)
-
 
     def __call_func(self, call_node):
         func_name = call_node.get("name")
@@ -112,6 +109,9 @@ class Interpreter(InterpreterBase):
             return self.__call_func(expr_ast)
         if expr_ast.elem_type in Interpreter.BIN_OPS:
             return self.__eval_op(expr_ast)
+        if expr_ast.elem_type in Interpreter.UNARY_OPS:
+            return self.__eval_unary_op(expr_ast)
+        super().error(ErrorType.SYNTAX_ERROR, f"Unknown expression type: {expr_ast.elem_type}")
 
     def __eval_op(self, arith_ast):
         left_value_obj = self.__eval_expr(arith_ast.get("op1"))
@@ -129,8 +129,20 @@ class Interpreter(InterpreterBase):
         f = self.op_to_lambda[left_value_obj.type()][arith_ast.elem_type]
         return f(left_value_obj, right_value_obj)
 
+    def __eval_unary_op(self, unary_ast):
+        operand_value_obj = self.__eval_expr(unary_ast.get("operand"))
+        if unary_ast.elem_type not in self.unary_op_to_lambda[operand_value_obj.type()]:
+            super().error(
+                ErrorType.TYPE_ERROR,
+                f"Incompatible unary operator {unary_ast.elem_type} for type {operand_value_obj.type()}",
+            )
+        f = self.unary_op_to_lambda[operand_value_obj.type()][unary_ast.elem_type]
+        return f(operand_value_obj)
+
     def __setup_ops(self):
         self.op_to_lambda = {}
+        self.unary_op_to_lambda = {}
+
         # set up operations on integers
         self.op_to_lambda[Type.INT] = {}
         self.op_to_lambda[Type.INT]["+"] = lambda x, y: Value(
@@ -139,4 +151,33 @@ class Interpreter(InterpreterBase):
         self.op_to_lambda[Type.INT]["-"] = lambda x, y: Value(
             x.type(), x.value() - y.value()
         )
-        # add other operators here later for int, string, bool, etc
+        self.op_to_lambda[Type.INT]["*"] = lambda x, y: Value(
+            x.type(), x.value() * y.value()
+        )
+        self.op_to_lambda[Type.INT]["/"] = lambda x, y: Value(
+            x.type(), x.value() // y.value()
+        ) if y.value() != 0 else super().error(ErrorType.ZERO_DIVISION_ERROR, "Division by zero")
+        self.op_to_lambda[Type.INT]["=="] = lambda x, y: Value(
+            Type.BOOL, x.value() == y.value()
+        )
+        self.op_to_lambda[Type.INT]["!="] = lambda x, y: Value(
+            Type.BOOL, x.value() != y.value()
+        )
+        self.op_to_lambda[Type.INT]["<"] = lambda x, y: Value(
+            Type.BOOL, x.value() < y.value()
+        )
+        self.op_to_lambda[Type.INT]["<="] = lambda x, y: Value(
+            Type.BOOL, x.value() <= y.value()
+        )
+        self.op_to_lambda[Type.INT][">"] = lambda x, y: Value(
+            Type.BOOL, x.value() > y.value()
+        )
+        self.op_to_lambda[Type.INT][">="] = lambda x, y: Value(
+            Type.BOOL, x.value() >= y.value()
+        )
+
+        # set up unary operations on integers
+        self.unary_op_to_lambda[Type.INT] = {}
+        self.unary_op_to_lambda[Type.INT]["-"] = lambda x: Value(
+            x.type(), -x.value()
+        )
