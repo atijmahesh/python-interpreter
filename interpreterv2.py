@@ -1,8 +1,7 @@
-from env_v2 import EnvironmentManager
-from type_valuev2 import Type, Value, create_value, get_printable
+from env_v1 import EnvironmentManager
+from type_valuev1 import Type, Value, create_value, get_printable
 from intbase import InterpreterBase, ErrorType
 from brewparse import parse_program
-
 
 # Main interpreter class
 class Interpreter(InterpreterBase):
@@ -89,7 +88,7 @@ class Interpreter(InterpreterBase):
 
     def __var_def(self, var_ast):
         var_name = var_ast.get("name")
-        # Initialize variable with default value based on type
+        # Initialize variable with NIL
         if not self.env.create(var_name, Value(Type.NIL, None)):
             super().error(
                 ErrorType.NAME_ERROR, f"Duplicate definition for variable {var_name}"
@@ -102,6 +101,8 @@ class Interpreter(InterpreterBase):
             return Value(Type.STRING, expr_ast.get("val"))
         if expr_ast.elem_type == InterpreterBase.BOOL_NODE:
             return Value(Type.BOOL, expr_ast.get("val"))
+        if expr_ast.elem_type == InterpreterBase.NIL_NODE:
+            return Value(Type.NIL, None)
         if expr_ast.elem_type == InterpreterBase.VAR_NODE:
             var_name = expr_ast.get("name")
             val = self.env.get(var_name)
@@ -124,7 +125,6 @@ class Interpreter(InterpreterBase):
         op = arith_ast.elem_type
 
         if op in ["==", "!="]:
-            # For == and !=, values of different types are compared as per requirements
             if left_value_obj.type() != right_value_obj.type():
                 result = (op == "!=")
                 return Value(Type.BOOL, result)
