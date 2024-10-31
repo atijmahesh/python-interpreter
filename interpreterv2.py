@@ -1,5 +1,5 @@
-from env_v1 import EnvironmentManager
-from type_valuev1 import Type, Value, create_value, get_printable
+from env_v2 import EnvironmentManager
+from type_valuev2 import Type, Value, create_value, get_printable
 from intbase import InterpreterBase, ErrorType
 from brewparse import parse_program
 
