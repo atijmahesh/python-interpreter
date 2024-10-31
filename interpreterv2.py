@@ -28,7 +28,10 @@ class Interpreter(InterpreterBase):
     def __set_up_function_table(self, ast):
         self.func_name_to_ast = {}
         for func_def in ast.get("functions"):
-            self.func_name_to_ast[func_def.get("name")] = func_def
+            func_name = func_def.get("name")
+            if func_name in self.func_name_to_ast:
+                super().error(ErrorType.NAME_ERROR, f"Duplicate function error")
+            self.func_name_to_ast[func_name] = func_def
 
     def __get_func_by_name(self, name):
         if name not in self.func_name_to_ast:
@@ -36,7 +39,6 @@ class Interpreter(InterpreterBase):
         return self.func_name_to_ast[name]
 
     def __run_statements(self, statements):
-        # all statements of a function are held in arg3 of the function AST node
         for statement in statements:
             if self.trace_output:
                 print(statement)
@@ -46,6 +48,13 @@ class Interpreter(InterpreterBase):
                 self.__assign(statement)
             elif statement.elem_type == InterpreterBase.VAR_DEF_NODE:
                 self.__var_def(statement)
+            elif statement.elem_type == InterpreterBase.RETURN_NODE:
+                expr = statement.get("expr")
+                if expr is not None:
+                    value = self.__eval_expr(expr)
+                else:
+                    value = Value(Type.NIL, None)  # Return NIL if no expression
+                raise ReturnException(value)
 
     def __call_func(self, call_node):
         func_name = call_node.get("name")
@@ -54,8 +63,34 @@ class Interpreter(InterpreterBase):
         if func_name == "inputi":
             return self.__call_input(call_node)
 
-        # add code here later to call other functions
+        if func_name in self.func_name_to_ast:
+            return self.__execute_function(func_name, call_node.get("args"))
+
         super().error(ErrorType.NAME_ERROR, f"Function {func_name} not found")
+
+    def __execute_function(self, func_name, args):
+        func_def = self.__get_func_by_name(func_name)
+        param_asts = func_def.get("params")
+        param_names = [param.get("name") for param in param_asts] if param_asts else []
+
+        if len(args) != len(param_names):
+            super().error(ErrorType.TYPE_ERROR, f"Incorrect number of arguments for function {func_name}")
+        # Evaluate args
+        arg_values = [self.__eval_expr(arg) for arg in args]
+        # Add new env scope
+        self.env.push()
+        for param_name, arg_value in zip(param_names, arg_values):
+            self.env.create(param_name, arg_value)
+        # Execute function
+        #CITATION: CHATGPT helped me with these 10 lines of code to mess w/env
+        try:
+            self.__run_statements(func_def.get("statements"))
+        except ReturnException as e:
+            self.env.pop()
+            return e.value
+
+        self.env.pop()
+        return Value(Type.NIL, None)  # Return NIL if no return value
 
     def __call_print(self, call_ast):
         output = ""
@@ -91,7 +126,7 @@ class Interpreter(InterpreterBase):
         # Initialize variable with NIL
         if not self.env.create(var_name, Value(Type.NIL, None)):
             super().error(
-                ErrorType.NAME_ERROR, f"Duplicate definition for variable {var_name}"
+                ErrorType.NAME_ERROR, f"Duplicate definition error"
             )
 
     def __eval_expr(self, expr_ast):
@@ -236,3 +271,8 @@ class Interpreter(InterpreterBase):
         self.op_to_lambda[Type.STRING]["!="] = lambda x, y: Value(
             Type.BOOL, x.value() != y.value()
         )
+
+# handling function exceptions
+class ReturnException(Exception):
+    def __init__(self, value):
+        self.value = value
