@@ -7,8 +7,8 @@ from brewparse import parse_program
 # Main interpreter class
 class Interpreter(InterpreterBase):
     # constants
-    BIN_OPS = {"+", "-", "*", "/", "==", "!=", "<", "<=", ">", ">="}
-    UNARY_OPS = {"-"}
+    BIN_OPS = {"+", "-", "*", "/", "==", "!=", "<", "<=", ">", ">=", "&&", "||"}
+    UNARY_OPS = {"-", "!"}
 
     # methods
     def __init__(self, console_output=True, inp=None, trace_output=False):
@@ -62,7 +62,7 @@ class Interpreter(InterpreterBase):
         output = ""
         for arg in call_ast.get("args"):
             result = self.__eval_expr(arg)  # result is a Value object
-            output = output + get_printable(result)
+            output += get_printable(result)
         super().output(output)
 
     def __call_input(self, call_ast):
@@ -89,7 +89,8 @@ class Interpreter(InterpreterBase):
 
     def __var_def(self, var_ast):
         var_name = var_ast.get("name")
-        if not self.env.create(var_name, Value(Type.INT, 0)):
+        # Initialize variable with default value based on type
+        if not self.env.create(var_name, Value(Type.NIL, None)):
             super().error(
                 ErrorType.NAME_ERROR, f"Duplicate definition for variable {var_name}"
             )
@@ -99,6 +100,8 @@ class Interpreter(InterpreterBase):
             return Value(Type.INT, expr_ast.get("val"))
         if expr_ast.elem_type == InterpreterBase.STRING_NODE:
             return Value(Type.STRING, expr_ast.get("val"))
+        if expr_ast.elem_type == InterpreterBase.BOOL_NODE:
+            return Value(Type.BOOL, expr_ast.get("val"))
         if expr_ast.elem_type == InterpreterBase.VAR_NODE:
             var_name = expr_ast.get("name")
             val = self.env.get(var_name)
@@ -111,32 +114,51 @@ class Interpreter(InterpreterBase):
             return self.__eval_op(expr_ast)
         if expr_ast.elem_type in Interpreter.UNARY_OPS:
             return self.__eval_unary_op(expr_ast)
-        super().error(ErrorType.SYNTAX_ERROR, f"Unknown expression type: {expr_ast.elem_type}")
+        super().error(
+            ErrorType.SYNTAX_ERROR, f"Unknown expression type: {expr_ast.elem_type}"
+        )
 
     def __eval_op(self, arith_ast):
         left_value_obj = self.__eval_expr(arith_ast.get("op1"))
         right_value_obj = self.__eval_expr(arith_ast.get("op2"))
-        if left_value_obj.type() != right_value_obj.type():
-            super().error(
-                ErrorType.TYPE_ERROR,
-                f"Incompatible types for {arith_ast.elem_type} operation",
-            )
-        if arith_ast.elem_type not in self.op_to_lambda[left_value_obj.type()]:
-            super().error(
-                ErrorType.TYPE_ERROR,
-                f"Incompatible operator {arith_ast.elem_type} for type {left_value_obj.type()}",
-            )
-        f = self.op_to_lambda[left_value_obj.type()][arith_ast.elem_type]
-        return f(left_value_obj, right_value_obj)
+        op = arith_ast.elem_type
+
+        if op in ["==", "!="]:
+            # For == and !=, values of different types are compared as per requirements
+            if left_value_obj.type() != right_value_obj.type():
+                result = (op == "!=")
+                return Value(Type.BOOL, result)
+            else:
+                if op not in self.op_to_lambda[left_value_obj.type()]:
+                    super().error(
+                        ErrorType.TYPE_ERROR,
+                        f"Incompatible operator {op} for type {left_value_obj.type()}",
+                    )
+                f = self.op_to_lambda[left_value_obj.type()][op]
+                return f(left_value_obj, right_value_obj)
+        else:
+            if left_value_obj.type() != right_value_obj.type():
+                super().error(
+                    ErrorType.TYPE_ERROR,
+                    f"Incompatible types for {op} operation",
+                )
+            if op not in self.op_to_lambda.get(left_value_obj.type(), {}):
+                super().error(
+                    ErrorType.TYPE_ERROR,
+                    f"Incompatible operator {op} for type {left_value_obj.type()}",
+                )
+            f = self.op_to_lambda[left_value_obj.type()][op]
+            return f(left_value_obj, right_value_obj)
 
     def __eval_unary_op(self, unary_ast):
         operand_value_obj = self.__eval_expr(unary_ast.get("operand"))
-        if unary_ast.elem_type not in self.unary_op_to_lambda[operand_value_obj.type()]:
+        op = unary_ast.elem_type
+        if op not in self.unary_op_to_lambda.get(operand_value_obj.type(), {}):
             super().error(
                 ErrorType.TYPE_ERROR,
-                f"Incompatible unary operator {unary_ast.elem_type} for type {operand_value_obj.type()}",
+                f"Incompatible unary operator {op} for type {operand_value_obj.type()}",
             )
-        f = self.unary_op_to_lambda[operand_value_obj.type()][unary_ast.elem_type]
+        f = self.unary_op_to_lambda[operand_value_obj.type()][op]
         return f(operand_value_obj)
 
     def __setup_ops(self):
@@ -146,22 +168,16 @@ class Interpreter(InterpreterBase):
         # set up operations on integers
         self.op_to_lambda[Type.INT] = {}
         self.op_to_lambda[Type.INT]["+"] = lambda x, y: Value(
-            x.type(), x.value() + y.value()
+            Type.INT, x.value() + y.value()
         )
         self.op_to_lambda[Type.INT]["-"] = lambda x, y: Value(
-            x.type(), x.value() - y.value()
+            Type.INT, x.value() - y.value()
         )
         self.op_to_lambda[Type.INT]["*"] = lambda x, y: Value(
-            x.type(), x.value() * y.value()
+            Type.INT, x.value() * y.value()
         )
         self.op_to_lambda[Type.INT]["/"] = lambda x, y: Value(
-            x.type(), x.value() // y.value()
-        ) if y.value() != 0 else super().error(ErrorType.ZERO_DIVISION_ERROR, "Division by zero")
-        self.op_to_lambda[Type.INT]["=="] = lambda x, y: Value(
-            Type.BOOL, x.value() == y.value()
-        )
-        self.op_to_lambda[Type.INT]["!="] = lambda x, y: Value(
-            Type.BOOL, x.value() != y.value()
+            Type.INT, x.value() // y.value()
         )
         self.op_to_lambda[Type.INT]["<"] = lambda x, y: Value(
             Type.BOOL, x.value() < y.value()
@@ -175,9 +191,48 @@ class Interpreter(InterpreterBase):
         self.op_to_lambda[Type.INT][">="] = lambda x, y: Value(
             Type.BOOL, x.value() >= y.value()
         )
+        self.op_to_lambda[Type.INT]["=="] = lambda x, y: Value(
+            Type.BOOL, x.value() == y.value()
+        )
+        self.op_to_lambda[Type.INT]["!="] = lambda x, y: Value(
+            Type.BOOL, x.value() != y.value()
+        )
 
-        # set up unary operations on integers
+        # set up unary operations on ints
         self.unary_op_to_lambda[Type.INT] = {}
         self.unary_op_to_lambda[Type.INT]["-"] = lambda x: Value(
-            x.type(), -x.value()
+            Type.INT, -x.value()
+        )
+
+        # set up ops on bools
+        self.op_to_lambda[Type.BOOL] = {}
+        self.op_to_lambda[Type.BOOL]["&&"] = lambda x, y: Value(
+            Type.BOOL, x.value() and y.value()
+        )
+        self.op_to_lambda[Type.BOOL]["||"] = lambda x, y: Value(
+            Type.BOOL, x.value() or y.value()
+        )
+        self.op_to_lambda[Type.BOOL]["=="] = lambda x, y: Value(
+            Type.BOOL, x.value() == y.value()
+        )
+        self.op_to_lambda[Type.BOOL]["!="] = lambda x, y: Value(
+            Type.BOOL, x.value() != y.value()
+        )
+
+        # unary ops on bools
+        self.unary_op_to_lambda[Type.BOOL] = {}
+        self.unary_op_to_lambda[Type.BOOL]["!"] = lambda x: Value(
+            Type.BOOL, not x.value()
+        )
+
+        # string ops
+        self.op_to_lambda[Type.STRING] = {}
+        self.op_to_lambda[Type.STRING]["+"] = lambda x, y: Value(
+            Type.STRING, x.value() + y.value()
+        )
+        self.op_to_lambda[Type.STRING]["=="] = lambda x, y: Value(
+            Type.BOOL, x.value() == y.value()
+        )
+        self.op_to_lambda[Type.STRING]["!="] = lambda x, y: Value(
+            Type.BOOL, x.value() != y.value()
         )
