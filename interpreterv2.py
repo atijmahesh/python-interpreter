@@ -248,73 +248,46 @@ class Interpreter(InterpreterBase):
         self.unary_op_to_lambda = {}
 
         # set up operations on integers
-        self.op_to_lambda[Type.INT] = {}
-        self.op_to_lambda[Type.INT]["+"] = lambda x, y: Value(
-            Type.INT, x.value() + y.value()
-        )
-        self.op_to_lambda[Type.INT]["-"] = lambda x, y: Value(
-            Type.INT, x.value() - y.value()
-        )
-        self.op_to_lambda[Type.INT]["*"] = lambda x, y: Value(
-            Type.INT, x.value() * y.value()
-        )
-        self.op_to_lambda[Type.INT]["/"] = lambda x, y: Value(
-            Type.INT, x.value() // y.value()
-        )
-        self.op_to_lambda[Type.INT]["<"] = lambda x, y: Value(
-            Type.BOOL, x.value() < y.value()
-        )
-        self.op_to_lambda[Type.INT]["<="] = lambda x, y: Value(
-            Type.BOOL, x.value() <= y.value()
-        )
-        self.op_to_lambda[Type.INT][">"] = lambda x, y: Value(
-            Type.BOOL, x.value() > y.value()
-        )
-        self.op_to_lambda[Type.INT][">="] = lambda x, y: Value(
-            Type.BOOL, x.value() >= y.value()
-        )
-        self.op_to_lambda[Type.INT]["=="] = lambda x, y: Value(
-            Type.BOOL, x.value() == y.value()
-        )
-        self.op_to_lambda[Type.INT]["!="] = lambda x, y: Value(
-            Type.BOOL, x.value() != y.value()
-        )
+        self.op_to_lambda[Type.INT] = {
+            "+": lambda x, y: Value(Type.INT, x.value() + y.value()),
+            "-": lambda x, y: Value(Type.INT, x.value() - y.value()),
+            "*": lambda x, y: Value(Type.INT, x.value() * y.value()),
+            "/": lambda x, y: Value(Type.INT, x.value() // y.value()),
+            "<": lambda x, y: Value(Type.BOOL, x.value() < y.value()),
+            "<=": lambda x, y: Value(Type.BOOL, x.value() <= y.value()),
+            ">": lambda x, y: Value(Type.BOOL, x.value() > y.value()),
+            ">=": lambda x, y: Value(Type.BOOL, x.value() >= y.value()),
+            "==": lambda x, y: Value(Type.BOOL, x.value() == y.value()),
+            "!=": lambda x, y: Value(Type.BOOL, x.value() != y.value()),
+        }
 
         # set up unary operations on ints
-        self.unary_op_to_lambda[Type.INT] = {}
-        self.unary_op_to_lambda[Type.INT]["-"] = lambda x: Value(
-            Type.INT, -x.value()
-        )
+        self.unary_op_to_lambda[Type.INT] = {
+            "-": lambda x: Value(Type.INT, -x.value()),
+        }
 
         # set up ops on bools
-        self.op_to_lambda[Type.BOOL] = {}
-        self.op_to_lambda[Type.BOOL]["&&"] = lambda x, y: Value(
-            Type.BOOL, x.value() and y.value()
-        )
-        self.op_to_lambda[Type.BOOL]["||"] = lambda x, y: Value(
-            Type.BOOL, x.value() or y.value()
-        )
-        self.op_to_lambda[Type.BOOL]["=="] = lambda x, y: Value(
-            Type.BOOL, x.value() == y.value()
-        )
-        self.op_to_lambda[Type.BOOL]["!="] = lambda x, y: Value(
-            Type.BOOL, x.value() != y.value()
-        )
+        self.op_to_lambda[Type.BOOL] = {
+            "&&": lambda x, y: Value(Type.BOOL, x.value() and y.value()),
+            "||": lambda x, y: Value(Type.BOOL, x.value() or y.value()),
+            "==": lambda x, y: Value(Type.BOOL, x.value() == y.value()),
+            "!=": lambda x, y: Value(Type.BOOL, x.value() != y.value()),
+        }
 
         # unary ops on bools
-        self.unary_op_to_lambda[Type.BOOL] = {}
-        self.unary_op_to_lambda[Type.BOOL]["!"] = lambda x: Value(
-            Type.BOOL, not x.value()
-        )
+        self.unary_op_to_lambda[Type.BOOL] = {
+            "!": lambda x: Value(Type.BOOL, not x.value()),
+        }
 
         # string ops
-        self.op_to_lambda[Type.STRING] = {}
-        self.op_to_lambda[Type.STRING]["+"] = lambda x, y: Value(
-            Type.STRING, x.value() + y.value()
-        )
-        self.op_to_lambda[Type.STRING]["=="] = lambda x, y: Value(
-            Type.BOOL, x.value() == y.value()
-        )
-        self.op_to_lambda[Type.STRING]["!="] = lambda x, y: Value(
-            Type.BOOL, x.value() != y.value()
-        )
+        self.op_to_lambda[Type.STRING] = {
+            "+": lambda x, y: Value(Type.STRING, x.value() + y.value()),
+            "==": lambda x, y: Value(Type.BOOL, x.value() == y.value()),
+            "!=": lambda x, y: Value(Type.BOOL, x.value() != y.value()),
+        }
+
+        # nil ops
+        self.op_to_lambda[Type.NIL] = {
+            "==": lambda x, y: Value(Type.BOOL, True),
+            "!=": lambda x, y: Value(Type.BOOL, False),
+        }
