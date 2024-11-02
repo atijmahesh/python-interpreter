@@ -66,31 +66,37 @@ class Interpreter(InterpreterBase):
                 self.__handle_for(statement)
 
     def __handle_if(self, if_ast):
-        condition_expr = if_ast.get("condition") 
+        condition_expr = if_ast.get("condition")
         condition_value = self.__eval_expr(condition_expr)
         if condition_value.type() != Type.BOOL:
             super().error(ErrorType.TYPE_ERROR, "If statement doesn't evaluate to a bool")
         if condition_value.value():
             try:
-                self.__run_statements(if_ast.get("statements")) 
+                self.env.push()
+                self.__run_statements(if_ast.get("statements"))
             except ReturnException as e:
+                self.env.pop()
                 raise e
+            self.env.pop()
         else:
             else_block = if_ast.get("else_statements")
             if else_block is not None:
                 try:
+                    self.env.push()
                     self.__run_statements(else_block)
                 except ReturnException as e:
+                    self.env.pop()
                     raise e
+                self.env.pop()
 
     # CITATION: CHAT GPT helped me with this function (roughly 15 lines)
     def __handle_for(self, for_ast):
         init_stmt = for_ast.get("init")
         if init_stmt is not None:
             self.__assign(init_stmt)
-        condition_expr = for_ast.get("condition")  
+        condition_expr = for_ast.get("condition")
         update_stmt = for_ast.get("update")
-        body_statements = for_ast.get("statements") 
+        body_statements = for_ast.get("statements")
         while True:
             condition_value = self.__eval_expr(condition_expr)
             if condition_value.type() != Type.BOOL:
@@ -98,9 +104,12 @@ class Interpreter(InterpreterBase):
             if not condition_value.value():
                 break
             try:
+                self.env.push()
                 self.__run_statements(body_statements)
             except ReturnException as e:
+                self.env.pop()
                 raise e
+            self.env.pop()
             if update_stmt is not None:
                 self.__assign(update_stmt)
 
@@ -109,7 +118,9 @@ class Interpreter(InterpreterBase):
         if func_name == "print":
             return self.__call_print(call_node)
         if func_name == "inputi":
-            return self.__call_input(call_node)
+            return self.__call_inputi(call_node)
+        if func_name == "inputs":
+            return self.__call_inputs(call_node)
 
         if func_name in self.func_name_to_ast:
             args = call_node.get("args") or []
@@ -146,7 +157,7 @@ class Interpreter(InterpreterBase):
             output += get_printable(result)
         super().output(output)
 
-    def __call_input(self, call_ast):
+    def __call_inputi(self, call_ast):
         args = call_ast.get("args") or []
         if len(args) == 1:
             result = self.__eval_expr(args[0])
@@ -156,9 +167,19 @@ class Interpreter(InterpreterBase):
                 ErrorType.NAME_ERROR, "No inputi() function that takes > 1 parameter"
             )
         inp = super().get_input()
-        if call_ast.get("name") == "inputi":
-            return Value(Type.INT, int(inp))
-        # we can support inputs here later
+        return Value(Type.INT, int(inp))
+
+    def __call_inputs(self, call_ast):
+        args = call_ast.get("args") or []
+        if len(args) == 1:
+            result = self.__eval_expr(args[0])
+            super().output(get_printable(result))
+        elif len(args) > 1:
+            super().error(
+                ErrorType.NAME_ERROR, "No inputs() function that takes > 1 parameter"
+            )
+        inp = super().get_input()
+        return Value(Type.STRING, inp)
 
     def __assign(self, assign_ast):
         var_name = assign_ast.get("name")
@@ -177,6 +198,8 @@ class Interpreter(InterpreterBase):
             )
 
     def __eval_expr(self, expr_ast):
+        if expr_ast is None:
+            super().error(ErrorType.TYPE_ERROR, "None Expression")
         if expr_ast.elem_type == InterpreterBase.INT_NODE:
             return Value(Type.INT, expr_ast.get("val"))
         if expr_ast.elem_type == InterpreterBase.STRING_NODE:
@@ -198,12 +221,18 @@ class Interpreter(InterpreterBase):
         if expr_ast.elem_type in Interpreter.UNARY_OPS:
             return self.__eval_unary_op(expr_ast)
         super().error(
-            ErrorType.SYNTAX_ERROR, f"Unknown expression type: {expr_ast.elem_type}"
+            ErrorType.TYPE_ERROR, f"Unknown expression type: {expr_ast.elem_type}"
         )
 
     def __eval_op(self, arith_ast):
-        left_value_obj = self.__eval_expr(arith_ast.get("op1"))
-        right_value_obj = self.__eval_expr(arith_ast.get("op2"))
+        op1 = arith_ast.get("op1")
+        op2 = arith_ast.get("op2")
+        if op1 is None or op2 is None:
+            super().error(ErrorType.TYPE_ERROR, "Missing operands for binary operator")
+        left_value_obj = self.__eval_expr(op1)
+        right_value_obj = self.__eval_expr(op2)
+        if left_value_obj is None or right_value_obj is None:
+            super().error(ErrorType.TYPE_ERROR, "Operand evals to None")
         op = arith_ast.elem_type
 
         if op in ["==", "!="]:
@@ -233,7 +262,12 @@ class Interpreter(InterpreterBase):
             return f(left_value_obj, right_value_obj)
 
     def __eval_unary_op(self, unary_ast):
-        operand_value_obj = self.__eval_expr(unary_ast.get("operand"))
+        operand = unary_ast.get("operand")
+        if operand is None:
+            super().error(ErrorType.TYPE_ERROR, "Missing operand for unary operator")
+        operand_value_obj = self.__eval_expr(operand)
+        if operand_value_obj is None:
+            super().error(ErrorType.TYPE_ERROR, "Operand evals to None")
         op = unary_ast.elem_type
         if op not in self.unary_op_to_lambda.get(operand_value_obj.type(), {}):
             super().error(
