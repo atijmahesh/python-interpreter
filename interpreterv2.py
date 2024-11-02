@@ -66,30 +66,30 @@ class Interpreter(InterpreterBase):
                 self.__handle_for(statement)
 
     def __handle_if(self, if_ast):
-        condition_expr = if_ast.get("condition") 
+        condition_expr = if_ast.get("cond") 
         condition_value = self.__eval_expr(condition_expr)
         if condition_value.type() != Type.BOOL:
             super().error(ErrorType.TYPE_ERROR, "If statement doesn't evaluate to a bool")
         if condition_value.value():
             try:
-                self.__run_statements(if_ast.get("then_part"))  
+                self.__run_statements(if_ast.get("then"))
             except ReturnException as e:
                 raise e
         else:
-            else_block = if_ast.get("else_part")  
+            else_block = if_ast.get("else") 
             if else_block is not None:
                 try:
                     self.__run_statements(else_block)
                 except ReturnException as e:
                     raise e
-                
-     # CITATION: CHAT GPT helped me with this function (roughly 15 lines)
+
+    # CITATION: CHAT GPT helped me with this function (roughly 15 lines)
     def __handle_for(self, for_ast):
-        init_stmt = for_ast.get("initialize") 
+        init_stmt = for_ast.get("init") 
         self.__assign(init_stmt)
-        condition_expr = for_ast.get("condition") 
-        update_stmt = for_ast.get("increment")  
-        body_statements = for_ast.get("statements")
+        condition_expr = for_ast.get("cond")
+        update_stmt = for_ast.get("update") 
+        body_statements = for_ast.get("body")
         while True:
             condition_value = self.__eval_expr(condition_expr)
             if condition_value.type() != Type.BOOL:
@@ -124,7 +124,7 @@ class Interpreter(InterpreterBase):
             super().error(ErrorType.TYPE_ERROR, f"Incorrect number of arguments for function {func_name}")
         # Evaluate args
         arg_values = [self.__eval_expr(arg) for arg in args]
-        # CITATION: CHATGPT helped me write these following lines involving enviornment changes
+        # CITATION: CHATGPT helped me write these following lines involving environment changes
         self.env.push()
         for param_name, arg_value in zip(param_names, arg_values):
             self.env.create(param_name, arg_value)
