@@ -12,7 +12,7 @@ class ReturnException(Exception):
 class Interpreter(InterpreterBase):
     # constants
     BIN_OPS = {"+", "-", "*", "/", "==", "!=", "<", "<=", ">", ">=", "&&", "||"}
-    UNARY_OPS = {"-", "!"}
+    UNARY_OPS = {"neg", "!"}
 
     # methods
     def __init__(self, console_output=True, inp=None, trace_output=False):
@@ -262,7 +262,7 @@ class Interpreter(InterpreterBase):
             return f(left_value_obj, right_value_obj)
 
     def __eval_unary_op(self, unary_ast):
-        operand = unary_ast.get("operand")
+        operand = unary_ast.get("op1") 
         if operand is None:
             super().error(ErrorType.TYPE_ERROR, "Missing operand for unary operator")
         operand_value_obj = self.__eval_expr(operand)
@@ -297,7 +297,7 @@ class Interpreter(InterpreterBase):
 
         # set up unary operations on ints
         self.unary_op_to_lambda[Type.INT] = {
-            "-": lambda x: Value(Type.INT, -x.value()),
+            "neg": lambda x: Value(Type.INT, -x.value()),
         }
 
         # set up ops on bools
