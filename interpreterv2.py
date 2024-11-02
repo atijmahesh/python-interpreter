@@ -3,6 +3,11 @@ from type_valuev2 import Type, Value, create_value, get_printable
 from intbase import InterpreterBase, ErrorType
 from brewparse import parse_program
 
+# handling function exceptions
+class ReturnException(Exception):
+    def __init__(self, value):
+        self.value = value
+
 # Main interpreter class
 class Interpreter(InterpreterBase):
     # constants
@@ -55,6 +60,48 @@ class Interpreter(InterpreterBase):
                 else:
                     value = Value(Type.NIL, None)  # Return NIL if no expression
                 raise ReturnException(value)
+            elif statement.elem_type == InterpreterBase.IF_NODE:
+                self.__handle_if(statement)
+            elif statement.elem_type == InterpreterBase.FOR_NODE:
+                self.__handle_for(statement)
+
+    def __handle_if(self, if_ast):
+        condition_expr = if_ast.get("cond")
+        condition_value = self.__eval_expr(condition_expr)
+        if condition_value.type() != Type.BOOL:
+            super().error(ErrorType.TYPE_ERROR, "If statement doesn't evaluate to a bool")
+        if condition_value.value():
+            try:
+                self.__run_statements(if_ast.get("then"))
+            except ReturnException as e:
+                raise e
+        else:
+            else_block = if_ast.get("else")
+            if else_block is not None:
+                try:
+                    self.__run_statements(else_block)
+                except ReturnException as e:
+                    raise e
+
+    def __handle_for(self, for_ast):
+        init_stmt = for_ast.get("init")
+        self.__assign(init_stmt)
+        condition_expr = for_ast.get("cond")
+        update_stmt = for_ast.get("update")
+        body_statements = for_ast.get("body")
+        # CITATION: CHAT GPT helped me with these ~10 lines
+        while True:
+            condition_value = self.__eval_expr(condition_expr)
+            if condition_value.type() != Type.BOOL:
+                super().error(ErrorType.TYPE_ERROR, "Condition of for loop does not evaluate to a boolean")
+            if not condition_value.value():
+                break
+            try:
+                self.__run_statements(body_statements)
+            except ReturnException as e:
+                raise e
+            # Update
+            self.__assign(update_stmt)
 
     def __call_func(self, call_node):
         func_name = call_node.get("name")
@@ -71,14 +118,14 @@ class Interpreter(InterpreterBase):
 
     def __execute_function(self, func_name, args):
         func_def = self.__get_func_by_name(func_name)
-        param_asts = func_def.get("args") 
+        param_asts = func_def.get("args")
         param_names = [param.get("name") for param in param_asts] if param_asts else []
 
         if len(args) != len(param_names):
             super().error(ErrorType.TYPE_ERROR, f"Incorrect number of arguments for function {func_name}")
         # Evaluate args
         arg_values = [self.__eval_expr(arg) for arg in args]
-        # CITATION: CHATGPT helped me write lines 81-92 (11 lines)
+        # CITATION: CHATGPT helped me write these following lines involving enviornment changes
         self.env.push()
         for param_name, arg_value in zip(param_names, arg_values):
             self.env.create(param_name, arg_value)
@@ -270,8 +317,3 @@ class Interpreter(InterpreterBase):
         self.op_to_lambda[Type.STRING]["!="] = lambda x, y: Value(
             Type.BOOL, x.value() != y.value()
         )
-
-# handling function exceptions
-class ReturnException(Exception):
-    def __init__(self, value):
-        self.value = value
