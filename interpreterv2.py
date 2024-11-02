@@ -66,30 +66,30 @@ class Interpreter(InterpreterBase):
                 self.__handle_for(statement)
 
     def __handle_if(self, if_ast):
-        condition_expr = if_ast.get("cond")
+        condition_expr = if_ast.get("condition") 
         condition_value = self.__eval_expr(condition_expr)
         if condition_value.type() != Type.BOOL:
             super().error(ErrorType.TYPE_ERROR, "If statement doesn't evaluate to a bool")
         if condition_value.value():
             try:
-                self.__run_statements(if_ast.get("then"))
+                self.__run_statements(if_ast.get("then_part"))  
             except ReturnException as e:
                 raise e
         else:
-            else_block = if_ast.get("else")
+            else_block = if_ast.get("else_part")  
             if else_block is not None:
                 try:
                     self.__run_statements(else_block)
                 except ReturnException as e:
                     raise e
-
+                
+     # CITATION: CHAT GPT helped me with this function (roughly 15 lines)
     def __handle_for(self, for_ast):
-        init_stmt = for_ast.get("init")
+        init_stmt = for_ast.get("initialize") 
         self.__assign(init_stmt)
-        condition_expr = for_ast.get("cond")
-        update_stmt = for_ast.get("update")
-        body_statements = for_ast.get("body")
-        # CITATION: CHAT GPT helped me with these ~10 lines
+        condition_expr = for_ast.get("condition") 
+        update_stmt = for_ast.get("increment")  
+        body_statements = for_ast.get("statements")
         while True:
             condition_value = self.__eval_expr(condition_expr)
             if condition_value.type() != Type.BOOL:
@@ -100,7 +100,6 @@ class Interpreter(InterpreterBase):
                 self.__run_statements(body_statements)
             except ReturnException as e:
                 raise e
-            # Update
             self.__assign(update_stmt)
 
     def __call_func(self, call_node):
@@ -146,11 +145,11 @@ class Interpreter(InterpreterBase):
         super().output(output)
 
     def __call_input(self, call_ast):
-        args = call_ast.get("args")
-        if args is not None and len(args) == 1:
+        args = call_ast.get("args") or []
+        if len(args) == 1:
             result = self.__eval_expr(args[0])
             super().output(get_printable(result))
-        elif args is not None and len(args) > 1:
+        elif len(args) > 1:
             super().error(
                 ErrorType.NAME_ERROR, "No inputi() function that takes > 1 parameter"
             )
