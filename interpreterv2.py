@@ -54,7 +54,7 @@ class Interpreter(InterpreterBase):
             elif statement.elem_type == InterpreterBase.VAR_DEF_NODE:
                 self.__var_def(statement)
             elif statement.elem_type == InterpreterBase.RETURN_NODE:
-                expr = statement.get("expr")
+                expr = statement.get("expression")
                 if expr is not None:
                     value = self.__eval_expr(expr)
                 else:
@@ -66,17 +66,17 @@ class Interpreter(InterpreterBase):
                 self.__handle_for(statement)
 
     def __handle_if(self, if_ast):
-        condition_expr = if_ast.get("cond") 
+        condition_expr = if_ast.get("condition") 
         condition_value = self.__eval_expr(condition_expr)
         if condition_value.type() != Type.BOOL:
             super().error(ErrorType.TYPE_ERROR, "If statement doesn't evaluate to a bool")
         if condition_value.value():
             try:
-                self.__run_statements(if_ast.get("then"))
+                self.__run_statements(if_ast.get("statements")) 
             except ReturnException as e:
                 raise e
         else:
-            else_block = if_ast.get("else") 
+            else_block = if_ast.get("else_statements")
             if else_block is not None:
                 try:
                     self.__run_statements(else_block)
@@ -85,11 +85,12 @@ class Interpreter(InterpreterBase):
 
     # CITATION: CHAT GPT helped me with this function (roughly 15 lines)
     def __handle_for(self, for_ast):
-        init_stmt = for_ast.get("init") 
-        self.__assign(init_stmt)
-        condition_expr = for_ast.get("cond")
-        update_stmt = for_ast.get("update") 
-        body_statements = for_ast.get("body")
+        init_stmt = for_ast.get("init")
+        if init_stmt is not None:
+            self.__assign(init_stmt)
+        condition_expr = for_ast.get("condition")  
+        update_stmt = for_ast.get("update")
+        body_statements = for_ast.get("statements") 
         while True:
             condition_value = self.__eval_expr(condition_expr)
             if condition_value.type() != Type.BOOL:
@@ -100,7 +101,8 @@ class Interpreter(InterpreterBase):
                 self.__run_statements(body_statements)
             except ReturnException as e:
                 raise e
-            self.__assign(update_stmt)
+            if update_stmt is not None:
+                self.__assign(update_stmt)
 
     def __call_func(self, call_node):
         func_name = call_node.get("name")
