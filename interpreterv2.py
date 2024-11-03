@@ -26,7 +26,7 @@ class Interpreter(InterpreterBase):
     def run(self, program):
         ast = parse_program(program)
         self.__set_up_function_table(ast)
-        main_func = self.__get_func_by_name("main")
+        main_func = self.__get_func_by_name("main", 0)
         self.env = EnvironmentManager()
         self.__run_statements(main_func.get("statements"))
 
@@ -34,14 +34,19 @@ class Interpreter(InterpreterBase):
         self.func_name_to_ast = {}
         for func_def in ast.get("functions"):
             func_name = func_def.get("name")
-            if func_name in self.func_name_to_ast:
+            param_asts = func_def.get("args")
+            param_count = len(param_asts) if param_asts else 0
+            func_key = (func_name, param_count)
+            if func_key in self.func_name_to_ast:
                 super().error(ErrorType.NAME_ERROR, f"Duplicate function error")
-            self.func_name_to_ast[func_name] = func_def
+            self.func_name_to_ast[func_key] = func_def
 
-    def __get_func_by_name(self, name):
-        if name not in self.func_name_to_ast:
+    def __get_func_by_name(self, name, param_count):
+        func_key = (name, param_count)
+        if func_key not in self.func_name_to_ast:
             super().error(ErrorType.NAME_ERROR, f"Function {name} not found")
-        return self.func_name_to_ast[name]
+        return self.func_name_to_ast[func_key]
+
 
     def __run_statements(self, statements):
         for statement in statements:
@@ -122,26 +127,24 @@ class Interpreter(InterpreterBase):
         if func_name == "inputs":
             return self.__call_inputs(call_node)
 
-        if func_name in self.func_name_to_ast:
-            args = call_node.get("args") or []
+        args = call_node.get("args") or []
+        params = len(args)
+        if (func_name, params) in self.func_name_to_ast:
             return self.__execute_function(func_name, args)
+        else:
+            super().error(ErrorType.NAME_ERROR, f"Function {func_name} not found")
 
-        super().error(ErrorType.NAME_ERROR, f"Function {func_name} not found")
-
+    # CITATION: Chat GPT helped me write this function (~20 lines)
     def __execute_function(self, func_name, args):
-        func_def = self.__get_func_by_name(func_name)
+        param_count = len(args)
+        func_def = self.__get_func_by_name(func_name, param_count)
         param_asts = func_def.get("args")
         param_names = [param.get("name") for param in param_asts] if param_asts else []
 
-        if len(args) != len(param_names):
-            super().error(ErrorType.TYPE_ERROR, f"Incorrect number of arguments for function {func_name}")
-        # Evaluate args
         arg_values = [self.__eval_expr(arg) for arg in args]
-        # CITATION: CHATGPT helped me write these following lines involving environment changes
         self.env.push()
         for param_name, arg_value in zip(param_names, arg_values):
             self.env.create(param_name, arg_value)
-        # Execute function
         try:
             self.__run_statements(func_def.get("statements"))
         except ReturnException as e:
