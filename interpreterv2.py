@@ -26,9 +26,8 @@ class Interpreter(InterpreterBase):
     def run(self, program):
         ast = parse_program(program)
         self.__set_up_function_table(ast)
-        main_func = self.__get_func_by_name("main", 0)
         self.env = EnvironmentManager()
-        self.__run_statements(main_func.get("statements"))
+        self.__execute_function("main", [])
 
     def __set_up_function_table(self, ast):
         self.func_name_to_ast = {}
