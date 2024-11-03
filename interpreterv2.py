@@ -159,6 +159,7 @@ class Interpreter(InterpreterBase):
             result = self.__eval_expr(arg)  # result is a Value object
             output += get_printable(result)
         super().output(output)
+        return Value(Type.NIL, None)
 
     def __call_inputi(self, call_ast):
         args = call_ast.get("args") or []
