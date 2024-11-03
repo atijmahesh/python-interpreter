@@ -148,9 +148,7 @@ class Interpreter(InterpreterBase):
         try:
             self.__run_statements(func_def.get("statements"))
         except ReturnException as e:
-            self.env.pop_function_scope()
-            if e.value is None:
-                return Value(Type.NIL, None)
+            self.env.pop_function_scope() 
             return e.value
         self.env.pop_function_scope()
         return Value(Type.NIL, None)  # Return NIL if no return value
