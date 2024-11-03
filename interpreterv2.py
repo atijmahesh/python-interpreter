@@ -142,15 +142,15 @@ class Interpreter(InterpreterBase):
         param_names = [param.get("name") for param in param_asts] if param_asts else []
 
         arg_values = [self.__eval_expr(arg) for arg in args]
-        self.env.push()
+        self.env.push_function_scope()
         for param_name, arg_value in zip(param_names, arg_values):
             self.env.create(param_name, arg_value)
         try:
             self.__run_statements(func_def.get("statements"))
         except ReturnException as e:
-            self.env.pop()
+            self.env.pop_function_scope() 
             return e.value
-        self.env.pop()
+        self.env.pop_function_scope()
         return Value(Type.NIL, None)  # Return NIL if no return value
 
     def __call_print(self, call_ast):
