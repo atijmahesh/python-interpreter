@@ -134,7 +134,7 @@ class Interpreter(InterpreterBase):
         else:
             super().error(ErrorType.NAME_ERROR, f"Function {func_name} not found")
 
-    # CITATION: Chat GPT helped me write this function (~20 lines)
+    # CITATION: Chat GPT helped me write this function (16 lines)
     def __execute_function(self, func_name, args):
         param_count = len(args)
         func_def = self.__get_func_by_name(func_name, param_count)
