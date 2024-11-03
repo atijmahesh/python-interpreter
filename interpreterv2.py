@@ -326,6 +326,6 @@ class Interpreter(InterpreterBase):
 
         # nil ops
         self.op_to_lambda[Type.NIL] = {
-            "==": lambda x, y: Value(Type.BOOL, True),
-            "!=": lambda x, y: Value(Type.BOOL, False),
+            "==": lambda x, y: Value(Type.BOOL, x.value() == y.value()),
+            "!=": lambda x, y: Value(Type.BOOL, x.value() != y.value()),
         }
