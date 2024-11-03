@@ -24,6 +24,7 @@ class EnvironmentManager:
             if symbol in env:
                 return env[symbol]
         return None
+    # End Citation
     
     def set(self, symbol, value):
         start_index = self.function_scope_indices[-1]

@@ -93,7 +93,7 @@ class Interpreter(InterpreterBase):
                     raise e
                 self.env.pop()
 
-    # CITATION: CHAT GPT helped me with this function (roughly 15 lines)
+    
     def __handle_for(self, for_ast):
         init_stmt = for_ast.get("init")
         if init_stmt is not None:
@@ -101,6 +101,7 @@ class Interpreter(InterpreterBase):
         condition_expr = for_ast.get("condition")
         update_stmt = for_ast.get("update")
         body_statements = for_ast.get("statements")
+        # CITATION: CHAT GPT helped me write this segment. 14 lines
         while True:
             condition_value = self.__eval_expr(condition_expr)
             if condition_value.type() != Type.BOOL:
@@ -116,6 +117,7 @@ class Interpreter(InterpreterBase):
             self.env.pop()
             if update_stmt is not None:
                 self.__assign(update_stmt)
+        # End Citation
 
     def __call_func(self, call_node):
         func_name = call_node.get("name")
@@ -151,6 +153,7 @@ class Interpreter(InterpreterBase):
             return e.value
         self.env.pop_function_scope()
         return Value(Type.NIL, None)  # Return NIL if no return value
+    # End Citation
 
     def __call_print(self, call_ast):
         output = ""
