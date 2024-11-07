@@ -1,41 +1,48 @@
-# The EnvironmentManager class keeps a mapping between each variable (aka symbol)
-# in a brewin program and the value of that variable - the value that's passed in can be
-# anything you like. In our implementation we pass in a Value object which holds a type
-# and a value (e.g., Int, 10).
+# The EnvironmentManager class keeps a mapping between each variable name (aka symbol)
+# in a brewin program and the Value object, which stores a type, and a value.
 class EnvironmentManager:
-    # CITATION: Used ChatGPT to help me code these 18 lines.
-    # Was lost on how to do stack ops and global variable management
     def __init__(self):
-        self.environment_stack = [{}] 
-        self.function_scope_indices = [0] 
-    def push(self):
-        self.environment_stack.append({})
-    def pop(self):
-        self.environment_stack.pop()
-    def push_function_scope(self):
-        self.environment_stack.append({})
-        self.function_scope_indices.append(len(self.environment_stack) - 1)
-    def pop_function_scope(self):
-        self.environment_stack.pop()
-        self.function_scope_indices.pop()
+        self.environment = []
+
+    # returns a VariableDef object
     def get(self, symbol):
-        start_index = self.function_scope_indices[-1]
-        for env in reversed(self.environment_stack[start_index:]):
+        cur_func_env = self.environment[-1]
+        for env in reversed(cur_func_env):
             if symbol in env:
                 return env[symbol]
+
         return None
-    # End Citation
-    
+
     def set(self, symbol, value):
-        start_index = self.function_scope_indices[-1]
-        for env in reversed(self.environment_stack[start_index:]):
+        cur_func_env = self.environment[-1]
+        for env in reversed(cur_func_env):
             if symbol in env:
                 env[symbol] = value
                 return True
+
         return False
-    def create(self, symbol, start_val):
-        env = self.environment_stack[-1] 
-        if symbol not in env:
-            env[symbol] = start_val
-            return True
-        return False
+
+    # create a new symbol in the top-most environment, regardless of whether that symbol exists
+    # in a lower environment
+    def create(self, symbol, value):
+        cur_func_env = self.environment[-1]
+        if symbol in cur_func_env[-1]:   # symbol already defined in current scope
+            return False
+        cur_func_env[-1][symbol] = value
+        return True
+
+    # used when we enter a new function - start with empty dictionary to hold parameters.
+    def push_func(self):
+        self.environment.append([{}])  # [[...]] -> [[...], [{}]]
+
+    def push_block(self):
+        cur_func_env = self.environment[-1]
+        cur_func_env.append({})  # [[...],[{....}] -> [[...],[{...}, {}]]
+
+    def pop_block(self):
+        cur_func_env = self.environment[-1]
+        cur_func_env.pop() 
+
+    # used when we exit a nested block to discard the environment for that block
+    def pop_func(self):
+        self.environment.pop()
