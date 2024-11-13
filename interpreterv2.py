@@ -324,7 +324,7 @@ class Interpreter(InterpreterBase):
                 status, return_val = self.__run_statements(statements)
                 if status == ExecStatus.RETURN:
                     return status, return_val
-            self.__run_statement(update_ast)  # update counter variable
+                self.__run_statement(update_ast)  # update counter variable
 
         return (ExecStatus.CONTINUE, Interpreter.NIL_VALUE)
 

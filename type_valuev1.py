@@ -6,8 +6,6 @@ class Type:
     INT = "int"
     BOOL = "bool"
     STRING = "string"
-    NIL = "nil"
-
 
 # Represents a value, which has a type and its value
 class Value:
@@ -27,8 +25,6 @@ def create_value(val):
         return Value(Type.BOOL, True)
     elif val == InterpreterBase.FALSE_DEF:
         return Value(Type.BOOL, False)
-    elif val == InterpreterBase.NIL_DEF:
-        return Value(Type.NIL, None)
     elif isinstance(val, str):
         return Value(Type.STRING, val)
     elif isinstance(val, int):

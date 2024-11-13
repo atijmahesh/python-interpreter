@@ -46,3 +46,4 @@ class EnvironmentManager:
     # used when we exit a nested block to discard the environment for that block
     def pop_func(self):
         self.environment.pop()
+
