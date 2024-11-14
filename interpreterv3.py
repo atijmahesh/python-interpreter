@@ -37,9 +37,12 @@ class Interpreter(InterpreterBase):
         self.__call_func_aux("main", [])
 
     def __set_up_function_table(self, ast):
-        for func_def in ast.get("functions", []):
+        functions = ast.get("functions")
+        if functions is None:
+            functions = []
+        for func_def in functions:
             func_name = func_def.get("name")
-            num_params = len(func_def.get("args"))
+            num_params = len(func_def.get("args") or [])
             return_type = func_def.get("return_type")
             if return_type is None:
                 return_type = InterpreterBase.VOID_DEF
@@ -90,7 +93,7 @@ class Interpreter(InterpreterBase):
 
     def __call_func(self, call_node):
         func_name = call_node.get("name")
-        actual_args = call_node.get("args", [])
+        actual_args = call_node.get("args") or []
         return self.__call_func_aux(func_name, actual_args)
 
     def __call_func_aux(self, func_name, actual_args):
@@ -99,10 +102,10 @@ class Interpreter(InterpreterBase):
         if func_name == "inputi" or func_name == "inputs":
             return self.__call_input(func_name, actual_args)
 
-        num_params = len(actual_args) if actual_args else 0
+        num_params = len(actual_args)
         func_ast = self.__get_func_by_name(func_name, num_params)
-        formal_args = func_ast.get("args", [])
-        return_type = func_ast.get("return_type", InterpreterBase.VOID_DEF)
+        formal_args = func_ast.get("args") or []
+        return_type = func_ast.get("return_type") or InterpreterBase.VOID_DEF
         # Eval params
         evaluated_args = []
         for i, arg_ast in enumerate(actual_args):
@@ -127,7 +130,7 @@ class Interpreter(InterpreterBase):
                 )
         # END CITATION
         
-        status, return_val = self.__run_statements(func_ast.get("statements"))
+        status, return_val = self.__run_statements(func_ast.get("statements") or [])
         self.env.pop_func()
         if status != ExecStatus.RETURN and return_type != InterpreterBase.VOID_DEF:
             return_val = default_value_for_type(return_type)
@@ -154,7 +157,6 @@ class Interpreter(InterpreterBase):
         if inp is None:
             inp = ""
         if name == "inputi":
-            # Convert ip to int if possible
             try:
                 val = int(inp)
             except ValueError:
@@ -187,10 +189,8 @@ class Interpreter(InterpreterBase):
         var_type = var_ast.get("var_type")
         if var_type is None:
             super().error(ErrorType.TYPE_ERROR, f"No type specified for variable '{var_name}'")
-        # Check if type is valid
         if not self.__is_valid_type(var_type):
             super().error(ErrorType.TYPE_ERROR, f"Invalid type for variable '{var_name}'")
-        # Initialize the variable with a default val
         default_val = default_value_for_type(var_type)
         if not self.env.create(var_name, default_val, var_type):
             super().error(
@@ -226,7 +226,6 @@ class Interpreter(InterpreterBase):
         left_value_obj = self.__eval_expr(arith_ast.get("op1"))
         right_value_obj = self.__eval_expr(arith_ast.get("op2"))
         if op in {"+", "-", "*", "/", "<", "<=", ">", ">="}:
-            # Expect both operands to be ints
             if left_value_obj.type() != Type.INT or right_value_obj.type() != Type.INT:
                 super().error(
                     ErrorType.TYPE_ERROR,
@@ -340,7 +339,7 @@ class Interpreter(InterpreterBase):
                 "Incompatible type for if condition",
             )
         if result.value():
-            statements = if_ast.get("statements")
+            statements = if_ast.get("statements") or []
             return self.__run_statements(statements)
         else:
             else_statements = if_ast.get("else_statements")
@@ -352,26 +351,23 @@ class Interpreter(InterpreterBase):
         init_ast = for_ast.get("init") 
         cond_ast = for_ast.get("condition")
         update_ast = for_ast.get("update")
-        self.__run_statement(init_ast)  # initialize counter variable
+        self.__run_statement(init_ast)
         while True:
             run_for_val = self.__eval_expr(cond_ast)
             if run_for_val.type() == Type.INT:
-                # Coerce int to bool if needed
                 run_for_val = self.__coerce_type(run_for_val, Type.BOOL)
             if run_for_val.type() != Type.BOOL:
                 super().error(
                     ErrorType.TYPE_ERROR,
                     f"Incompatible type for for loop condition: expected bool or int, got '{run_for_val.type()}'"
                 )
-            # CITATION: USED CHAT GPT TO WRITE THE FOLLOwWING 7 LINES
             if not run_for_val.value():
                 break
-            statements = for_ast.get("statements")
+            statements = for_ast.get("statements") or []
             status, return_val = self.__run_statements(statements)
             if status == ExecStatus.RETURN:
                 return status, return_val
-            self.__run_statement(update_ast)  # update counter variable
-            # END CITATION
+            self.__run_statement(update_ast)
         return ExecStatus.CONTINUE, Interpreter.NIL_VALUE
 
     def __do_return(self, return_ast):
@@ -394,7 +390,6 @@ class Interpreter(InterpreterBase):
     def __coerce_type(self, value_obj, target_type):
         if value_obj.type() == target_type:
             return value_obj
-        # Coerce int to bool if target is bool
         if value_obj.type() == Type.INT and target_type == Type.BOOL:
             coerced_val = (value_obj.value() != 0)
             return Value(Type.BOOL, coerced_val)
