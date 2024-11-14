@@ -1,5 +1,3 @@
-# document that we won't have a return inside the init/update of a for loop
-
 import copy
 from enum import Enum
 
