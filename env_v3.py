@@ -6,29 +6,32 @@ class EnvironmentManager:
 
     # returns a VariableDef object
     def get(self, symbol):
+        if not self.environment:
+            return None
         cur_func_env = self.environment[-1]
         for env in reversed(cur_func_env):
             if symbol in env:
                 return env[symbol]
-
         return None
 
     def set(self, symbol, value):
+        if not self.environment:
+            return False
         cur_func_env = self.environment[-1]
         for env in reversed(cur_func_env):
             if symbol in env:
-                env[symbol] = value
+                env[symbol]["value"] = value
                 return True
-
         return False
 
-    # create a new symbol in the top-most environment, regardless of whether that symbol exists
-    # in a lower environment
-    def create(self, symbol, value):
+    # create a new symbol in the top-most environment with given val and type
+    def create(self, symbol, value, var_type):
+        if not self.environment:
+            return False
         cur_func_env = self.environment[-1]
         if symbol in cur_func_env[-1]:   # symbol already defined in current scope
             return False
-        cur_func_env[-1][symbol] = value
+        cur_func_env[-1][symbol] = {"value": value, "type": var_type}
         return True
 
     # used when we enter a new function - start with empty dictionary to hold parameters.
@@ -36,14 +39,19 @@ class EnvironmentManager:
         self.environment.append([{}])  # [[...]] -> [[...], [{}]]
 
     def push_block(self):
+        if not self.environment:
+            return
         cur_func_env = self.environment[-1]
         cur_func_env.append({})  # [[...],[{....}] -> [[...],[{...}, {}]]
 
     def pop_block(self):
+        if not self.environment:
+            return
         cur_func_env = self.environment[-1]
-        cur_func_env.pop() 
+        if len(cur_func_env) > 1:
+            cur_func_env.pop()
 
-    # used when we exit a nested block to discard the environment for that block
+    # used on function exit: discard all blocks for the function
     def pop_func(self):
-        self.environment.pop()
-
+        if self.environment:
+            self.environment.pop()
