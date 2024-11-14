@@ -1,13 +1,11 @@
 from intbase import InterpreterBase
 
-
 # Enumerated type for our different language data types
 class Type:
     INT = "int"
     BOOL = "bool"
     STRING = "string"
     NIL = "nil"
-
 
 # Represents a value, which has a type and its value
 class Value:
@@ -46,4 +44,19 @@ def get_printable(val):
         if val.value() is True:
             return "true"
         return "false"
+    if val.type() == Type.NIL:
+        return "nil"
     return None
+
+def default_value_for_type(t):
+    # Provide a default value for each type
+    if t == Type.INT:
+        return Value(Type.INT, 0)
+    if t == Type.BOOL:
+        return Value(Type.BOOL, False)
+    if t == Type.STRING:
+        return Value(Type.STRING, "")
+    if t == Type.NIL:
+        return Value(Type.NIL, None)
+    # If type is void or unknown, return nil
+    return Value(Type.NIL, None)
