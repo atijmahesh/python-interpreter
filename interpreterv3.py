@@ -26,15 +26,36 @@ class Interpreter(InterpreterBase):
         self.trace_output = trace_output
         self.__setup_ops()
         self.func_name_to_ast = {}
+        self.struct_defs = {}
 
     # run a program that's provided in a string
     # usese the provided Parser found in brewparse.py to parse the program
     # into an abstract syntax tree (ast)
     def run(self, program):
         ast = parse_program(program)
+        self.__set_up_struct_definitions(ast)
         self.__set_up_function_table(ast)
         self.env = EnvironmentManager()
         self.__call_func_aux("main", [])
+
+    # add struct defs from ast and store them
+    def __set_up_struct_definitions(self, ast):
+        structs = ast.get("structs")
+        if structs is None:
+            structs = []
+        for struct_def in structs:
+            struct_name = struct_def.get("name")
+            fields_ast = struct_def.get("fields") or []
+            fields = {}
+            for field_ast in fields_ast:
+                field_name = field_ast.get("name")
+                field_type = field_ast.get("var_type")
+                if field_type is None:
+                    super().error(ErrorType.TYPE_ERROR, f"No type specified for field '{field_name}'")
+                if not self.__is_valid_type(field_type):
+                    super().error(ErrorType.TYPE_ERROR, f"Invalid type for field '{field_name}'")
+                fields[field_name] = field_type
+            self.struct_defs[struct_name] = fields
 
     def __set_up_function_table(self, ast):
         functions = ast.get("functions")
@@ -168,6 +189,9 @@ class Interpreter(InterpreterBase):
     def __assign(self, assign_ast):
         var_name = assign_ast.get("name")
         value_obj = self.__eval_expr(assign_ast.get("expression"))
+        if '.' in var_name:
+            self.__assign_to_field(var_name, value_obj)
+            return
         var_def = self.env.get(var_name)
         if var_def is None:
             super().error(
@@ -183,6 +207,44 @@ class Interpreter(InterpreterBase):
             super().error(
                 ErrorType.NAME_ERROR, f"Undefined variable {var_name} in assignment"
             )
+    # assing var to struct field
+    def __assign_to_field(self, field_path, value_obj):
+        path_parts = field_path.split('.')
+        base_var_name = path_parts[0]
+        var_def = self.env.get(base_var_name)
+        if var_def is None:
+            super().error(ErrorType.NAME_ERROR, f"Undefined variable in field assignment")
+        base_var_value = var_def["value"]
+        if base_var_value.type() not in self.struct_defs and base_var_value.type() != Type.NIL:
+            super().error(ErrorType.TYPE_ERROR, f"Variable '{base_var_name}' is not a struct in field assignment")
+        current_obj = base_var_value.value() 
+
+        # CITATION: CHATGPT helped me write the following 23 lines
+        for i in range(1, len(path_parts)):
+            field_name = path_parts[i]
+            if base_var_value.type() == Type.NIL:
+                super().error(ErrorType.FAULT_ERROR, f"Null reference on '{field_path}'")
+            struct_type = base_var_value.type()
+            fields_def = self.struct_defs.get(struct_type, {})
+            if field_name not in fields_def:
+                super().error(ErrorType.NAME_ERROR, f"Field '{field_name}' not found in struct '{struct_type}'")
+            if i < len(path_parts) - 1:
+                next_value = current_obj[field_name]
+                if next_value.type() == Type.NIL:
+                    super().error(ErrorType.FAULT_ERROR, f"Null reference on field '{field_name}' in path '{field_path}'")
+                current_obj = next_value.value()
+                base_var_value = next_value
+            else:
+                field_type = fields_def[field_name]
+                # Coerce value if needed
+                coerced_value = self.__coerce_type(value_obj, field_type)
+                if not self.__check_type_compatibility(field_type, coerced_value.type()):
+                    super().error(
+                        ErrorType.TYPE_ERROR,
+                        f"Incompatible types for field assignment: field '{field_name}' is type '{field_type}', value is type '{coerced_value.type()}'"
+                    )
+                current_obj[field_name] = coerced_value
+        # END CITATION
 
     def __var_def(self, var_ast):
         var_name = var_ast.get("name")
@@ -208,6 +270,8 @@ class Interpreter(InterpreterBase):
             return Value(Type.BOOL, expr_ast.get("val"))
         if expr_ast.elem_type == InterpreterBase.VAR_NODE:
             var_name = expr_ast.get("name")
+            if '.' in var_name:
+                return self.__eval_field_access(var_name)
             var_def = self.env.get(var_name)
             if var_def is None:
                 super().error(ErrorType.NAME_ERROR, f"Variable {var_name} not found")
@@ -220,6 +284,41 @@ class Interpreter(InterpreterBase):
             return self.__eval_unary(expr_ast, Type.INT, lambda x: -x)
         if expr_ast.elem_type == InterpreterBase.NOT_NODE:
             return self.__eval_unary(expr_ast, Type.BOOL, lambda x: not x)
+        if expr_ast.elem_type == InterpreterBase.NEW_NODE:
+            return self.__eval_new(expr_ast)
+        super().error(ErrorType.NAME_ERROR, f"Unknown expression node type '{expr_ast.elem_type}'")
+    
+    # eval new struct
+    def __eval_new(self, new_ast):
+        struct_type = new_ast.get("var_type")
+        if struct_type not in self.struct_defs:
+            super().error(ErrorType.TYPE_ERROR, f"Invalid struct type for new expression")
+        field_defs = self.struct_defs[struct_type]
+        initial_fields = {}
+        for f_name, f_type in field_defs.items():
+            initial_fields[f_name] = default_value_for_type(f_type)
+        return Value(struct_type, initial_fields)
+
+    def __eval_field_access(self, field_path):
+        path_parts = field_path.split('.')
+        base_var_name = path_parts[0]
+        var_def = self.env.get(base_var_name)
+        if var_def is None:
+            super().error(ErrorType.NAME_ERROR, f"Variable '{base_var_name}' not found")
+        base_value = var_def["value"]
+        current_obj = base_value.value()
+        for field_name in path_parts[1:]:
+            if base_value.type() == Type.NIL:
+                super().error(ErrorType.FAULT_ERROR, f"Null reference on '{field_path}'")
+            struct_type = base_value.type()
+            if struct_type not in self.struct_defs:
+                super().error(ErrorType.TYPE_ERROR, f"Cannot access field '{field_name}' of non-struct variable '{base_var_name}'")
+            field_def = self.struct_defs[struct_type]
+            if field_name not in field_def:
+                super().error(ErrorType.NAME_ERROR, f"Field '{field_name}' not found in struct '{struct_type}'")
+            current_obj = current_obj[field_name]
+            base_value = current_obj
+        return current_obj
 
     def __eval_op(self, arith_ast):
         op = arith_ast.elem_type
@@ -237,6 +336,9 @@ class Interpreter(InterpreterBase):
                     ErrorType.TYPE_ERROR,
                     f"Incompatible types for {op} operation"
                 )
+            if op in {"==", "!="}:
+                if left_value_obj.type() in self.struct_defs or right_value_obj.type() in self.struct_defs or left_value_obj.type() == Type.NIL or right_value_obj.type() == Type.NIL:
+                    return self.__eval_struct_comparison(op, left_value_obj, right_value_obj)
         if left_value_obj.type() not in self.op_to_lambda:
             super().error(
                 ErrorType.TYPE_ERROR,
@@ -249,6 +351,15 @@ class Interpreter(InterpreterBase):
             )
         f = self.op_to_lambda[left_value_obj.type()][op]
         return f(left_value_obj, right_value_obj)
+
+    # note that struct refs equal <==> ref the same object
+    def __eval_struct_comparison(self, op, left_obj, right_obj):
+        if op == "==":
+            return Value(Type.BOOL, left_obj.value() is right_obj.value())
+        elif op == "!=":
+            return Value(Type.BOOL, left_obj.value() is not right_obj.value())
+        else:
+            super().error(ErrorType.TYPE_ERROR, f"Incompatible operator '{op}' for struct references or nil")
 
     def __eval_unary(self, arith_ast, expected_type, operation):
         value_obj = self.__eval_expr(arith_ast.get("op1"))
@@ -378,12 +489,19 @@ class Interpreter(InterpreterBase):
         return ExecStatus.RETURN, value_obj
 
     def __is_valid_type(self, t):
-        return t in {Type.INT, Type.BOOL, Type.STRING, InterpreterBase.VOID_DEF}
+        return (t in {Type.INT, Type.BOOL, Type.STRING, InterpreterBase.VOID_DEF} or
+                t in self.struct_defs)
 
     def __check_type_compatibility(self, target_type, source_type):
         if target_type == source_type:
             return True
+        # Coercion from int to bool
         if target_type == Type.BOOL and source_type == Type.INT:
+            return True
+        # Coercion from struct to nil and nil to struct
+        if target_type in self.struct_defs and source_type == Type.NIL:
+            return True
+        if source_type in self.struct_defs and target_type == Type.NIL:
             return True
         return False
 
