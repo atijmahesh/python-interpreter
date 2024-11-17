@@ -149,18 +149,33 @@ class Interpreter(InterpreterBase):
                 )
             evaluated_args.append((param_name, param_type, evaluated_arg))
         self.env.push_func()
-        # CITATION, CHAT GPT Helped me write these 4 lines on environment updates
+        # CITATION, CHAT GPT Helped me write these 25 lines on environment updates
         for param_name, param_type, param_value in evaluated_args:
             if not self.env.create(param_name, param_value, param_type):
                 super().error(
                     ErrorType.NAME_ERROR, f"Duplicate definition for parameter {param_name}"
                 )
-        # END CITATION
-
         status, return_val = self.__run_statements(func_ast.get("statements") or [])
         self.env.pop_func()
-        if status != ExecStatus.RETURN and return_type != InterpreterBase.VOID_DEF:
-            return_val = default_value_for_type(return_type)
+        if status == ExecStatus.RETURN:
+            if return_type == InterpreterBase.VOID_DEF:
+                if return_val is not None:
+                    super().error(ErrorType.TYPE_ERROR, f"Function '{func_name}' should not return a value")
+                return_val = Value(Type.VOID, None)
+            else:
+                if return_val is None:
+                    return_val = default_value_for_type(return_type)
+                elif not self.__check_type_compatibility(return_type, return_val.type()):
+                    super().error(
+                        ErrorType.TYPE_ERROR,
+                        f"Incompatible return type in function '{func_name}': expected '{return_type}', got '{return_val.type()}'"
+                    )
+        else:
+            if return_type != InterpreterBase.VOID_DEF:
+                return_val = default_value_for_type(return_type)
+            else:
+                return_val = Value(Type.VOID, None)
+        # END CITATION
         return return_val
 
     def __call_print(self, args):
@@ -220,26 +235,23 @@ class Interpreter(InterpreterBase):
         var_def = self.env.get(base_var_name)
         if var_def is None:
             super().error(ErrorType.NAME_ERROR, f"Undefined variable in field assignment")
-        base_var_value = var_def["value"]
-        if base_var_value.type() not in self.struct_defs and base_var_value.type() != Type.NIL:
+        curr_val = var_def["value"]
+        if curr_val.type() not in self.struct_defs and curr_val.type() != Type.NIL:
             super().error(ErrorType.TYPE_ERROR, f"Variable '{base_var_name}' is not a struct in field assignment")
-        current_obj = base_var_value.value() 
-
         # CITATION: CHATGPT helped me write the following 23 lines
         for i in range(1, len(path_parts)):
             field_name = path_parts[i]
-            if base_var_value.type() == Type.NIL:
+            if curr_val.type() == Type.NIL:
                 super().error(ErrorType.FAULT_ERROR, f"Null reference on '{field_path}'")
-            struct_type = base_var_value.type()
+            struct_type = curr_val.type()
             fields_def = self.struct_defs.get(struct_type, {})
             if field_name not in fields_def:
                 super().error(ErrorType.NAME_ERROR, f"Field '{field_name}' not found in struct '{struct_type}'")
+            fields_dict = curr_val.value()
             if i < len(path_parts) - 1:
-                next_value = current_obj[field_name]
-                if next_value.type() == Type.NIL:
-                    super().error(ErrorType.FAULT_ERROR, f"Null reference on field '{field_name}' in path '{field_path}'")
-                current_obj = next_value.value()
-                base_var_value = next_value
+                # Not the last field, navigate deeper
+                next_value = fields_dict[field_name]
+                curr_val = next_value
             else:
                 field_type = fields_def[field_name]
                 # Coerce value if needed
@@ -249,7 +261,7 @@ class Interpreter(InterpreterBase):
                         ErrorType.TYPE_ERROR,
                         f"Incompatible types for field assignment: field '{field_name}' is type '{field_type}', value is type '{coerced_value.type()}'"
                     )
-                current_obj[field_name] = coerced_value
+                fields_dict[field_name] = coerced_value
         # END CITATION
 
     def __var_def(self, var_ast):
@@ -283,7 +295,10 @@ class Interpreter(InterpreterBase):
                 super().error(ErrorType.NAME_ERROR, f"Variable {var_name} not found")
             return var_def["value"]
         if expr_ast.elem_type == InterpreterBase.FCALL_NODE:
-            return self.__call_func(expr_ast)
+            result = self.__call_func(expr_ast)
+            if result.type() == Type.VOID:
+                super().error(ErrorType.TYPE_ERROR, "Cannot use void function result in an expression")
+            return result
         if expr_ast.elem_type in Interpreter.BIN_OPS:
             return self.__eval_op(expr_ast)
         if expr_ast.elem_type == InterpreterBase.NEG_NODE:
@@ -324,10 +339,9 @@ class Interpreter(InterpreterBase):
             field_def = self.struct_defs[struct_type]
             if field_name not in field_def:
                 super().error(ErrorType.NAME_ERROR, f"Field not found in struct '{struct_type}'")
-            fields_dict = curr_val.value() 
+            fields_dict = curr_val.value()
             curr_val = fields_dict[field_name]  # Get Value object
         return curr_val  # Return Value object
-
 
     def __eval_op(self, arith_ast):
         op = arith_ast.elem_type
@@ -493,7 +507,7 @@ class Interpreter(InterpreterBase):
     def __do_return(self, return_ast):
         expr_ast = return_ast.get("expression")
         if expr_ast is None:
-            return ExecStatus.RETURN, Interpreter.NIL_VALUE
+            return ExecStatus.RETURN, None
         value_obj = self.__eval_expr(expr_ast)
         return ExecStatus.RETURN, value_obj
 

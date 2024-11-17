@@ -6,6 +6,7 @@ class Type:
     BOOL = "bool"
     STRING = "string"
     NIL = "nil"
+    VOID = "void"
 
 # Represents a value, which has a type and its value
 class Value:
