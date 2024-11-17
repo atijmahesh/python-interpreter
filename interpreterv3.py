@@ -224,6 +224,8 @@ class Interpreter(InterpreterBase):
                 ErrorType.TYPE_ERROR,
                 f"Incompatible types, '{var_name}' is type '{var_type}' and not '{value_obj.type()}'"
             )
+        # coerce if needed
+        value_obj = self.__coerce_type(value_obj, var_type)
         if not self.env.set(var_name, value_obj):
             super().error(
                 ErrorType.NAME_ERROR, f"Undefined variable {var_name} in assignment"

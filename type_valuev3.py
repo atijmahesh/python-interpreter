@@ -37,16 +37,14 @@ def create_value(val):
 
 
 def get_printable(val):
-    if val.type() == Type.INT:
-        return str(val.value())
     if val.type() == Type.STRING:
         return val.value()
+    if val.type() == Type.INT:
+        return str(val.value())
     if val.type() == Type.BOOL:
-        if val.value() is True:
-            return "true"
-        return "false"
+        return InterpreterBase.TRUE_DEF if val.value() else InterpreterBase.FALSE_DEF
     if val.type() == Type.NIL:
-        return "nil"
+        return InterpreterBase.NIL_DEF
     return None
 
 def default_value_for_type(t):
