@@ -156,7 +156,7 @@ class Interpreter(InterpreterBase):
                     ErrorType.NAME_ERROR, f"Duplicate definition for parameter {param_name}"
                 )
         # END CITATION
-        
+
         status, return_val = self.__run_statements(func_ast.get("statements") or [])
         self.env.pop_func()
         if status != ExecStatus.RETURN and return_type != InterpreterBase.VOID_DEF:
@@ -312,19 +312,22 @@ class Interpreter(InterpreterBase):
         if var_def is None:
             super().error(ErrorType.NAME_ERROR, f"Variable '{base_var_name}' not found")
         base_value = var_def["value"]
-        current_obj = base_value.value()
+        if base_value.type() == Type.NIL:
+            super().error(ErrorType.FAULT_ERROR, f"Null reference")
+        curr_val = base_value
         for field_name in path_parts[1:]:
-            if base_value.type() == Type.NIL:
-                super().error(ErrorType.FAULT_ERROR, f"Null reference on '{field_path}'")
-            struct_type = base_value.type()
+            if curr_val.type() == Type.NIL:
+                super().error(ErrorType.FAULT_ERROR, f"Null reference")
+            struct_type = curr_val.type()
             if struct_type not in self.struct_defs:
-                super().error(ErrorType.TYPE_ERROR, f"Cannot access field '{field_name}' of non-struct variable '{base_var_name}'")
+                super().error(ErrorType.TYPE_ERROR, f"Cannot access field '{field_name}' of non-struct variable")
             field_def = self.struct_defs[struct_type]
             if field_name not in field_def:
-                super().error(ErrorType.NAME_ERROR, f"Field '{field_name}' not found in struct '{struct_type}'")
-            current_obj = current_obj[field_name]
-            base_value = current_obj
-        return current_obj
+                super().error(ErrorType.NAME_ERROR, f"Field not found in struct '{struct_type}'")
+            fields_dict = curr_val.value() 
+            curr_val = fields_dict[field_name]  # Get Value object
+        return curr_val  # Return Value object
+
 
     def __eval_op(self, arith_ast):
         op = arith_ast.elem_type
