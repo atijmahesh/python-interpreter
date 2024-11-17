@@ -43,6 +43,12 @@ class Interpreter(InterpreterBase):
         structs = ast.get("structs")
         if structs is None:
             structs = []
+        # get struct names first
+        for struct_def in structs:
+            struct_name = struct_def.get("name")
+            if struct_name in self.struct_defs:
+                super().error(ErrorType.TYPE_ERROR, f"Duplicate struct '{struct_name}'")
+            self.struct_defs[struct_name] = None
         for struct_def in structs:
             struct_name = struct_def.get("name")
             fields_ast = struct_def.get("fields") or []
@@ -143,7 +149,7 @@ class Interpreter(InterpreterBase):
                 )
             evaluated_args.append((param_name, param_type, evaluated_arg))
         self.env.push_func()
-        # CITATION, CHAT GPT Helped me write these 4 lines on enviornment updates
+        # CITATION, CHAT GPT Helped me write these 4 lines on environment updates
         for param_name, param_type, param_value in evaluated_args:
             if not self.env.create(param_name, param_value, param_type):
                 super().error(
@@ -207,7 +213,7 @@ class Interpreter(InterpreterBase):
             super().error(
                 ErrorType.NAME_ERROR, f"Undefined variable {var_name} in assignment"
             )
-    # assing var to struct field
+    # assign var to struct field
     def __assign_to_field(self, field_path, value_obj):
         path_parts = field_path.split('.')
         base_var_name = path_parts[0]
