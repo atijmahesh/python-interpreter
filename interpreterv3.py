@@ -560,4 +560,7 @@ class Interpreter(InterpreterBase):
         if value_obj.type() == Type.INT and target_type == Type.BOOL:
             coerced_val = (value_obj.value() != 0)
             return Value(Type.BOOL, coerced_val)
+        if value_obj.type() == Type.BOOL and target_type == Type.INT:
+            coerced_val = 1 if value_obj.value() else 0
+            return Value(Type.INT, coerced_val)
         return value_obj
