@@ -375,8 +375,8 @@ class Interpreter(InterpreterBase):
                 )
         elif op in {"==", "!="}:
             # Handle struct and nil comps
-            if left_value_obj.type() in self.struct_defs or right_value_obj.type() in self.struct_defs or \
-               left_value_obj.type() == Type.NIL or right_value_obj.type() == Type.NIL:
+            if (left_value_obj.type() in self.struct_defs or left_value_obj.type() == Type.NIL) or \
+               (right_value_obj.type() in self.struct_defs or right_value_obj.type() == Type.NIL):
                 return self.__eval_struct_comparison(op, left_value_obj, right_value_obj)
             # Coerce int to bool if comparing int and bool
             if left_value_obj.type() != right_value_obj.type():
@@ -404,10 +404,16 @@ class Interpreter(InterpreterBase):
 
     # note that struct refs equal <==> ref the same object
     def __eval_struct_comparison(self, op, left_obj, right_obj):
-        if op == "==":
-            return Value(Type.BOOL, left_obj.value() is right_obj.value())
-        elif op == "!=":
-            return Value(Type.BOOL, left_obj.value() is not right_obj.value())
+        left_type = left_obj.type()
+        right_type = right_obj.type()
+        if (left_type in self.struct_defs or left_type == Type.NIL) and \
+           (right_type in self.struct_defs or right_type == Type.NIL):
+            if op == "==":
+                return Value(Type.BOOL, left_obj.value() is right_obj.value())
+            elif op == "!=":
+                return Value(Type.BOOL, left_obj.value() is not right_obj.value())
+            else:
+                super().error(ErrorType.TYPE_ERROR, f"Incompatible operator '{op}' for struct references or nil")
         else:
             super().error(ErrorType.TYPE_ERROR, f"Incompatible operator '{op}' for struct references or nil")
 
