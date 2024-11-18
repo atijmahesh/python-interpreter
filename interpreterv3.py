@@ -375,14 +375,14 @@ class Interpreter(InterpreterBase):
         elif op in {"==", "!="}:
             # Handle struct and nil comps
             if left_value_obj.type() in self.struct_defs or right_value_obj.type() in self.struct_defs or \
-            left_value_obj.type() == Type.NIL or right_value_obj.type() == Type.NIL:
+               left_value_obj.type() == Type.NIL or right_value_obj.type() == Type.NIL:
                 return self.__eval_struct_comparison(op, left_value_obj, right_value_obj)
-            # Coerce int and bool to a common type
+            # Coerce int to bool if comparing int and bool
             if left_value_obj.type() != right_value_obj.type():
-                if (left_value_obj.type() == Type.INT and right_value_obj.type() == Type.BOOL) or \
-                (left_value_obj.type() == Type.BOOL and right_value_obj.type() == Type.INT):
-                    left_value_obj = self.__coerce_type(left_value_obj, Type.INT)
-                    right_value_obj = self.__coerce_type(right_value_obj, Type.INT)
+                if (left_value_obj.type() == Type.INT and right_value_obj.type() == Type.BOOL):
+                    left_value_obj = self.__coerce_type(left_value_obj, Type.BOOL)
+                elif (left_value_obj.type() == Type.BOOL and right_value_obj.type() == Type.INT):
+                    right_value_obj = self.__coerce_type(right_value_obj, Type.BOOL)
                 else:
                     super().error(
                         ErrorType.TYPE_ERROR,
@@ -560,7 +560,4 @@ class Interpreter(InterpreterBase):
         if value_obj.type() == Type.INT and target_type == Type.BOOL:
             coerced_val = (value_obj.value() != 0)
             return Value(Type.BOOL, coerced_val)
-        if value_obj.type() == Type.BOOL and target_type == Type.INT:
-            coerced_val = 1 if value_obj.value() else 0
-            return Value(Type.INT, coerced_val)
         return value_obj
