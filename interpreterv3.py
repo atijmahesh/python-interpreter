@@ -154,7 +154,7 @@ class Interpreter(InterpreterBase):
             evaluated_arg = self.__coerce_type(evaluated_arg, param_type)
             evaluated_args.append((param_name, param_type, evaluated_arg))
         self.env.push_func()
-        # CITATION, CHAT GPT Helped me write these 25 lines on environment updates
+        # CITATION, CHAT GPT Helped me write these 27 lines on environment updates
         for param_name, param_type, param_value in evaluated_args:
             if not self.env.create(param_name, param_value, param_type):
                 super().error(
@@ -175,6 +175,8 @@ class Interpreter(InterpreterBase):
                         ErrorType.TYPE_ERROR,
                         f"Incompatible return type in function '{func_name}': expected '{return_type}', got '{return_val.type()}'"
                     )
+                else:
+                    return_val = self.__coerce_type(return_val, return_type)
         else:
             if return_type != InterpreterBase.VOID_DEF:
                 return_val = default_value_for_type(return_type)
@@ -245,20 +247,21 @@ class Interpreter(InterpreterBase):
         curr_val = var_def["value"]
         if curr_val.type() not in self.struct_defs and curr_val.type() != Type.NIL:
             super().error(ErrorType.TYPE_ERROR, f"Variable '{base_var_name}' is not a struct in field assignment")
-        # CITATION: CHATGPT helped me write the following 23 lines
         for i in range(1, len(path_parts)):
+            # CITATION: CHATGPT helped me write the following 23 lines
             field_name = path_parts[i]
             if curr_val.type() == Type.NIL:
                 super().error(ErrorType.FAULT_ERROR, f"Null reference on '{field_path}'")
             struct_type = curr_val.type()
+            if struct_type not in self.struct_defs:
+                super().error(ErrorType.TYPE_ERROR, f"Cannot access field '{field_name}' of non-struct variable")
             fields_def = self.struct_defs.get(struct_type, {})
             if field_name not in fields_def:
                 super().error(ErrorType.NAME_ERROR, f"Field '{field_name}' not found in struct '{struct_type}'")
             fields_dict = curr_val.value()
             if i < len(path_parts) - 1:
                 # Not the last field, navigate deeper
-                next_value = fields_dict[field_name]
-                curr_val = next_value
+                curr_val = fields_dict[field_name]
             else:
                 field_type = fields_def[field_name]
                 # Coerce value if needed
@@ -336,8 +339,10 @@ class Interpreter(InterpreterBase):
         base_value = var_def["value"]
         if base_value.type() == Type.NIL:
             super().error(ErrorType.FAULT_ERROR, f"Null reference")
+        if base_value.type() not in self.struct_defs:
+            super().error(ErrorType.TYPE_ERROR, f"Cannot access field '{path_parts[1]}' of non-struct variable '{base_var_name}'")
         curr_val = base_value
-        for field_name in path_parts[1:]:
+        for i, field_name in enumerate(path_parts[1:], 1):
             if curr_val.type() == Type.NIL:
                 super().error(ErrorType.FAULT_ERROR, f"Null reference")
             struct_type = curr_val.type()
