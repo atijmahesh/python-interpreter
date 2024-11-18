@@ -413,6 +413,10 @@ class Interpreter(InterpreterBase):
 
     def __eval_unary(self, arith_ast, expected_type, operation):
         value_obj = self.__eval_expr(arith_ast.get("op1"))
+        if arith_ast.elem_type == '!':
+            # coerce if necessary
+            if value_obj.type() == Type.INT:
+                value_obj = self.__coerce_type(value_obj, Type.BOOL)
         if value_obj.type() != expected_type:
             super().error(
                 ErrorType.TYPE_ERROR,
