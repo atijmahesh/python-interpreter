@@ -74,6 +74,8 @@ class Interpreter(InterpreterBase):
             if return_type is None:
                 return_type = InterpreterBase.VOID_DEF
                 func_def.dict["return_type"] = return_type
+            if not self.__is_valid_type(return_type):
+                super().error(ErrorType.TYPE_ERROR, f"Invalid return type '{return_type}' for function '{func_name}'")
             if func_name not in self.func_name_to_ast:
                 self.func_name_to_ast[func_name] = {}
             self.func_name_to_ast[func_name][num_params] = func_def
@@ -142,6 +144,8 @@ class Interpreter(InterpreterBase):
             param_type = param_info.get("var_type")
             if param_type is None:
                 super().error(ErrorType.TYPE_ERROR, f"No type specified for parameter '{param_name}'!'")
+            if not self.__is_valid_type(param_type):
+                super().error(ErrorType.TYPE_ERROR, f"Invalid type '{param_type}' for parameter '{param_name}'")
             if not self.__check_type_compatibility(param_type, evaluated_arg.type()):
                 super().error(
                     ErrorType.TYPE_ERROR,
