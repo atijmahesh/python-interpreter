@@ -12,7 +12,7 @@ class ExecStatus(Enum):
     RETURN = 2
 
 
-# Main interpreter class
+
 class Interpreter(InterpreterBase):
     # constants
     NIL_VALUE = create_value(InterpreterBase.NIL_DEF)
