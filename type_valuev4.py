@@ -47,3 +47,20 @@ def get_printable(val):
             return "true"
         return "false"
     return None
+
+class DeferredValue:
+    def __init__(self, expr_ast, env_manager, interpreter):
+        self.expr_ast = expr_ast
+        self.env = env_manager.copy_current_env()
+        self.interpreter = interpreter
+        self.cached_value = None
+
+    def evaluate(self):
+        if self.cached_value is None:
+            original_env = self.interpreter.env
+            self.interpreter.env = self.env.copy()
+            try:
+                self.cached_value = self.interpreter.__eval_expr_actual(self.expr_ast)
+            finally:
+                self.interpreter.env = original_env
+        return self.cached_value
