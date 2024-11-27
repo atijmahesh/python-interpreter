@@ -59,10 +59,5 @@ class DeferredValue:
 
     def evaluate(self):
         if self.cached_value is None:
-            original_env = self.interpreter.env
-            self.interpreter.env = self.env
-            try:
-                self.cached_value = self.interpreter._eval_expr_actual(self.expr_ast)
-            finally:
-                self.interpreter.env = original_env
+            self.cached_value = self.interpreter._eval_expr_actual(self.expr_ast, env=self.env)
         return self.cached_value

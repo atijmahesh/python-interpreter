@@ -102,7 +102,9 @@ class Interpreter(InterpreterBase):
         actual_args = call_node.get("args")
         return self.__call_func_aux(func_name, actual_args)
 
-    def __call_func_aux(self, func_name, actual_args):
+    def __call_func_aux(self, func_name, actual_args, env=None):
+        if env is None:
+            env = self.env
         if func_name == "print":
             return self.__call_print(actual_args)
         if func_name == "inputi" or func_name == "inputs":
@@ -121,7 +123,7 @@ class Interpreter(InterpreterBase):
         # and add the formal arguments to the activation record
         for formal_ast, actual_ast in zip(formal_args, actual_args):
             arg_name = formal_ast.get("name")
-            value_obj = DeferredValue(actual_ast, self.env.copy_current_env(), self)
+            value_obj = DeferredValue(actual_ast, env.copy_current_env(), self)
             self.env.create(arg_name, value_obj)
 
         try:
@@ -191,7 +193,9 @@ class Interpreter(InterpreterBase):
             if expr_ast.elem_type in Interpreter.BIN_OPS or expr_ast.elem_type in [InterpreterBase.NEG_NODE, InterpreterBase.NOT_NODE]:
                 return DeferredValue(expr_ast, self.env.copy_current_env(), self)
 
-    def _eval_expr_actual(self, expr_ast):
+    def _eval_expr_actual(self, expr_ast, env=None):
+        if env is None:
+            env = self.env
         if expr_ast.elem_type == InterpreterBase.NIL_NODE:
             return Interpreter.NIL_VALUE
         if expr_ast.elem_type == InterpreterBase.INT_NODE:
@@ -202,7 +206,7 @@ class Interpreter(InterpreterBase):
             return Value(Type.BOOL, expr_ast.get("val"))
         if expr_ast.elem_type == InterpreterBase.VAR_NODE:
             var_name = expr_ast.get("name")
-            val = self.env.get(var_name)
+            val = env.get(var_name)
             if val is None:
                 super().error(ErrorType.NAME_ERROR, f"Variable {var_name} not found")
             if isinstance(val, DeferredValue):
@@ -211,40 +215,71 @@ class Interpreter(InterpreterBase):
         if expr_ast.elem_type == InterpreterBase.FCALL_NODE:
             func_name = expr_ast.get("name")
             actual_args = expr_ast.get("args")
-            return self.__call_func_aux(func_name, actual_args)
+            return self.__call_func_aux(func_name, actual_args, env)
         if expr_ast.elem_type in Interpreter.BIN_OPS:
-            return self.__eval_op(expr_ast)
+            return self.__eval_op(expr_ast, env)
         if expr_ast.elem_type == InterpreterBase.NEG_NODE:
-            return self.__eval_unary(expr_ast, Type.INT, lambda x: -1 * x)
+            return self.__eval_unary(expr_ast, Type.INT, lambda x: -1 * x, env)
         if expr_ast.elem_type == InterpreterBase.NOT_NODE:
-            return self.__eval_unary(expr_ast, Type.BOOL, lambda x: not x)
+            return self.__eval_unary(expr_ast, Type.BOOL, lambda x: not x, env)
 
-    def __eval_op(self, arith_ast):
-        left_value_obj = self._eval_expr_actual(arith_ast.get("op1"))
+    def __eval_op(self, arith_ast, env):
+        left_value_obj = self._eval_expr_actual(arith_ast.get("op1"), env)
         if isinstance(left_value_obj, DeferredValue):
             left_value_obj = left_value_obj.evaluate()
         # making and + or short circuited
-        if arith_ast.elem_type == '&&' and left_value_obj.type() == Type.BOOL and not left_value_obj.value():
-            return Value(Type.BOOL, False)
-        if arith_ast.elem_type == '||' and left_value_obj.type() == Type.BOOL and left_value_obj.value():
-            return Value(Type.BOOL, True)
-        right_value_obj = self._eval_expr_actual(arith_ast.get("op2"))
-        if isinstance(right_value_obj, DeferredValue):
-            right_value_obj = right_value_obj.evaluate()
-        if not self.__compatible_types(
-            arith_ast.elem_type, left_value_obj, right_value_obj
-        ):
-            super().error(
-                ErrorType.TYPE_ERROR,
-                f"Incompatible types for {arith_ast.elem_type} operation",
-            )
-        if arith_ast.elem_type not in self.op_to_lambda[left_value_obj.type()]:
-            super().error(
-                ErrorType.TYPE_ERROR,
-                f"Incompatible operator {arith_ast.elem_type} for type {left_value_obj.type()}",
-            )
-        f = self.op_to_lambda[left_value_obj.type()][arith_ast.elem_type]
-        return f(left_value_obj, right_value_obj)
+        if arith_ast.elem_type == '&&':
+            if left_value_obj.type() != Type.BOOL:
+                super().error(
+                    ErrorType.TYPE_ERROR,
+                    f"Incompatible type for {arith_ast.elem_type} operation",
+                )
+            if not left_value_obj.value():
+                return Value(Type.BOOL, False)
+            right_value_obj = self._eval_expr_actual(arith_ast.get("op2"), env)
+            if isinstance(right_value_obj, DeferredValue):
+                right_value_obj = right_value_obj.evaluate()
+            if right_value_obj.type() != Type.BOOL:
+                super().error(
+                    ErrorType.TYPE_ERROR,
+                    f"Incompatible type for {arith_ast.elem_type} operation",
+                )
+            return Value(Type.BOOL, left_value_obj.value() and right_value_obj.value())
+        elif arith_ast.elem_type == '||':
+            if left_value_obj.type() != Type.BOOL:
+                super().error(
+                    ErrorType.TYPE_ERROR,
+                    f"Incompatible type for {arith_ast.elem_type} operation",
+                )
+            if left_value_obj.value():
+                return Value(Type.BOOL, True)
+            right_value_obj = self._eval_expr_actual(arith_ast.get("op2"), env)
+            if isinstance(right_value_obj, DeferredValue):
+                right_value_obj = right_value_obj.evaluate()
+            if right_value_obj.type() != Type.BOOL:
+                super().error(
+                    ErrorType.TYPE_ERROR,
+                    f"Incompatible type for {arith_ast.elem_type} operation",
+                )
+            return Value(Type.BOOL, left_value_obj.value() or right_value_obj.value())
+        else:
+            right_value_obj = self._eval_expr_actual(arith_ast.get("op2"), env)
+            if isinstance(right_value_obj, DeferredValue):
+                right_value_obj = right_value_obj.evaluate()
+            if not self.__compatible_types(
+                arith_ast.elem_type, left_value_obj, right_value_obj
+            ):
+                super().error(
+                    ErrorType.TYPE_ERROR,
+                    f"Incompatible types for {arith_ast.elem_type} operation",
+                )
+            if arith_ast.elem_type not in self.op_to_lambda[left_value_obj.type()]:
+                super().error(
+                    ErrorType.TYPE_ERROR,
+                    f"Incompatible operator {arith_ast.elem_type} for type {left_value_obj.type()}",
+                )
+            f = self.op_to_lambda[left_value_obj.type()][arith_ast.elem_type]
+            return f(left_value_obj, right_value_obj)
 
     def __compatible_types(self, oper, obj1, obj2):
         # DOCUMENT: allow comparisons ==/!= of anything against anything
@@ -252,8 +287,8 @@ class Interpreter(InterpreterBase):
             return True
         return obj1.type() == obj2.type()
 
-    def __eval_unary(self, arith_ast, t, f):
-        value_obj = self._eval_expr_actual(arith_ast.get("op1"))
+    def __eval_unary(self, arith_ast, t, f, env):
+        value_obj = self._eval_expr_actual(arith_ast.get("op1"), env)
         if isinstance(value_obj, DeferredValue):
             value_obj = value_obj.evaluate()
         if value_obj.type() != t:
