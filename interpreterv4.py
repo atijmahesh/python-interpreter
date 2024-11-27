@@ -1,13 +1,9 @@
-# document that we won't have a return inside the init/update of a for loop
-
 import copy
 from enum import Enum
-
 from brewparse import parse_program
 from env_v4 import EnvironmentManager
 from intbase import InterpreterBase, ErrorType
-from type_valuev4 import Type, Value, create_value, get_printable
-
+from type_valuev4 import Type, Value, create_value, get_printable, DeferredValue
 
 class ExecStatus(Enum):
     CONTINUE = 1
@@ -106,18 +102,14 @@ class Interpreter(InterpreterBase):
                 f"Function {func_ast.get('name')} with {len(actual_args)} args not found",
             )
 
-        # first evaluate all of the actual parameters and associate them with the formal parameter names
-        args = {}
-        for formal_ast, actual_ast in zip(formal_args, actual_args):
-            result = copy.copy(self.__eval_expr(actual_ast))
-            arg_name = formal_ast.get("name")
-            args[arg_name] = result
-
-        # then create the new activation record 
+        # create the new activation record
         self.env.push_func()
         # and add the formal arguments to the activation record
-        for arg_name, value in args.items():
-          self.env.create(arg_name, value)
+        for formal_ast, actual_ast in zip(formal_args, actual_args):
+            arg_name = formal_ast.get("name")
+            value_obj = DeferredValue(actual_ast, self.env.copy_current_env(), self)
+            self.env.create(arg_name, value_obj)
+
         _, return_val = self.__run_statements(func_ast.get("statements"))
         self.env.pop_func()
         return return_val
@@ -125,7 +117,9 @@ class Interpreter(InterpreterBase):
     def __call_print(self, args):
         output = ""
         for arg in args:
-            result = self.__eval_expr(arg)  # result is a Value object
+            result = self.__eval_expr(arg)  # result is a DeferredValue
+            if isinstance(result, DeferredValue):
+                result = result.evaluate()
             output = output + get_printable(result)
         super().output(output)
         return Interpreter.NIL_VALUE
@@ -133,6 +127,8 @@ class Interpreter(InterpreterBase):
     def __call_input(self, name, args):
         if args is not None and len(args) == 1:
             result = self.__eval_expr(args[0])
+            if isinstance(result, DeferredValue):
+                result = result.evaluate()
             super().output(get_printable(result))
         elif args is not None and len(args) > 1:
             super().error(
@@ -146,7 +142,7 @@ class Interpreter(InterpreterBase):
 
     def __assign(self, assign_ast):
         var_name = assign_ast.get("name")
-        value_obj = self.__eval_expr(assign_ast.get("expression"))
+        value_obj = DeferredValue(assign_ast.get("expression"), self.env.copy_current_env(), self)
         if not self.env.set(var_name, value_obj):
             super().error(
                 ErrorType.NAME_ERROR, f"Undefined variable {var_name} in assignment"
@@ -169,13 +165,43 @@ class Interpreter(InterpreterBase):
         if expr_ast.elem_type == InterpreterBase.BOOL_NODE:
             return Value(Type.BOOL, expr_ast.get("val"))
         if expr_ast.elem_type == InterpreterBase.VAR_NODE:
+            return DeferredValue(expr_ast, self.env.copy_current_env(), self)
+        if expr_ast.elem_type == InterpreterBase.FCALL_NODE:
+            return DeferredValue(expr_ast, self.env.copy_current_env(), self)
+        if expr_ast.elem_type in Interpreter.BIN_OPS or expr_ast.elem_type in [Interpreter.NEG_NODE, Interpreter.NOT_NODE]:
+            return DeferredValue(expr_ast, self.env.copy_current_env(), self)
+
+    # new eval method to eval in given environment
+    def _eval_expr_in_env(self, expr_ast, env):
+        original_env = self.env
+        self.env = env
+        try:
+            result = self.__eval_expr_actual(expr_ast)
+        finally:
+            self.env = original_env
+        return result
+
+    def __eval_expr_actual(self, expr_ast):
+        if expr_ast.elem_type == InterpreterBase.NIL_NODE:
+            return Interpreter.NIL_VALUE
+        if expr_ast.elem_type == InterpreterBase.INT_NODE:
+            return Value(Type.INT, expr_ast.get("val"))
+        if expr_ast.elem_type == InterpreterBase.STRING_NODE:
+            return Value(Type.STRING, expr_ast.get("val"))
+        if expr_ast.elem_type == InterpreterBase.BOOL_NODE:
+            return Value(Type.BOOL, expr_ast.get("val"))
+        if expr_ast.elem_type == InterpreterBase.VAR_NODE:
             var_name = expr_ast.get("name")
             val = self.env.get(var_name)
             if val is None:
                 super().error(ErrorType.NAME_ERROR, f"Variable {var_name} not found")
+            if isinstance(val, DeferredValue):
+                val = val.evaluate()
             return val
         if expr_ast.elem_type == InterpreterBase.FCALL_NODE:
-            return self.__call_func(expr_ast)
+            func_name = expr_ast.get("name")
+            actual_args = expr_ast.get("args")
+            return self.__call_func_aux(func_name, actual_args)
         if expr_ast.elem_type in Interpreter.BIN_OPS:
             return self.__eval_op(expr_ast)
         if expr_ast.elem_type == Interpreter.NEG_NODE:
@@ -184,8 +210,17 @@ class Interpreter(InterpreterBase):
             return self.__eval_unary(expr_ast, Type.BOOL, lambda x: not x)
 
     def __eval_op(self, arith_ast):
-        left_value_obj = self.__eval_expr(arith_ast.get("op1"))
-        right_value_obj = self.__eval_expr(arith_ast.get("op2"))
+        left_value_obj = self.__eval_expr_actual(arith_ast.get("op1"))
+        if isinstance(left_value_obj, DeferredValue):
+            left_value_obj = left_value_obj.evaluate()
+        # making and + or short circuited
+        if arith_ast.elem_type == '&&' and left_value_obj.type() == Type.BOOL and not left_value_obj.value():
+            return Value(Type.BOOL, False)
+        if arith_ast.elem_type == '||' and left_value_obj.type() == Type.BOOL and left_value_obj.value():
+            return Value(Type.BOOL, True)
+        right_value_obj = self.__eval_expr_actual(arith_ast.get("op2"))
+        if isinstance(right_value_obj, DeferredValue):
+            right_value_obj = right_value_obj.evaluate()
         if not self.__compatible_types(
             arith_ast.elem_type, left_value_obj, right_value_obj
         ):
@@ -208,7 +243,9 @@ class Interpreter(InterpreterBase):
         return obj1.type() == obj2.type()
 
     def __eval_unary(self, arith_ast, t, f):
-        value_obj = self.__eval_expr(arith_ast.get("op1"))
+        value_obj = self.__eval_expr_actual(arith_ast.get("op1"))
+        if isinstance(value_obj, DeferredValue):
+            value_obj = value_obj.evaluate()
         if value_obj.type() != t:
             super().error(
                 ErrorType.TYPE_ERROR,
@@ -288,6 +325,8 @@ class Interpreter(InterpreterBase):
     def __do_if(self, if_ast):
         cond_ast = if_ast.get("condition")
         result = self.__eval_expr(cond_ast)
+        if isinstance(result, DeferredValue):
+            result = result.evaluate()
         if result.type() != Type.BOOL:
             super().error(
                 ErrorType.TYPE_ERROR,
@@ -312,19 +351,22 @@ class Interpreter(InterpreterBase):
 
         self.__run_statement(init_ast)  # initialize counter variable
         run_for = Interpreter.TRUE_VALUE
-        while run_for.value():
+        while True:
             run_for = self.__eval_expr(cond_ast)  # check for-loop condition
+            if isinstance(run_for, DeferredValue):
+                run_for = run_for.evaluate()
             if run_for.type() != Type.BOOL:
                 super().error(
                     ErrorType.TYPE_ERROR,
                     "Incompatible type for for condition",
                 )
-            if run_for.value():
-                statements = for_ast.get("statements")
-                status, return_val = self.__run_statements(statements)
-                if status == ExecStatus.RETURN:
-                    return status, return_val
-                self.__run_statement(update_ast)  # update counter variable
+            if not run_for.value():
+                break
+            statements = for_ast.get("statements")
+            status, return_val = self.__run_statements(statements)
+            if status == ExecStatus.RETURN:
+                return status, return_val
+            self.__run_statement(update_ast)  # update counter variable
 
         return (ExecStatus.CONTINUE, Interpreter.NIL_VALUE)
 
@@ -332,5 +374,7 @@ class Interpreter(InterpreterBase):
         expr_ast = return_ast.get("expression")
         if expr_ast is None:
             return (ExecStatus.RETURN, Interpreter.NIL_VALUE)
-        value_obj = copy.copy(self.__eval_expr(expr_ast))
+        value_obj = DeferredValue(expr_ast, self.env.copy_current_env(), self)
+        if isinstance(value_obj, DeferredValue):
+            value_obj = value_obj.evaluate()
         return (ExecStatus.RETURN, value_obj)
