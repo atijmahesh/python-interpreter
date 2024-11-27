@@ -38,6 +38,8 @@ def create_value(val):
 
 
 def get_printable(val):
+    if isinstance(val, DeferredValue):
+        val = val.evaluate()
     if val.type() == Type.INT:
         return str(val.value())
     if val.type() == Type.STRING:
@@ -46,7 +48,7 @@ def get_printable(val):
         if val.value() is True:
             return "true"
         return "false"
-    return None
+    return "nil"
 
 class DeferredValue:
     def __init__(self, expr_ast, env_manager, interpreter):

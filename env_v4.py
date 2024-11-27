@@ -55,6 +55,3 @@ class EnvironmentManager:
         # return a deep copy
         return EnvironmentManager(environment=copy.deepcopy(self.environment))
 
-    # for deferred values
-    def copy(self):
-        return EnvironmentManager(environment=copy.deepcopy(self.environment))
