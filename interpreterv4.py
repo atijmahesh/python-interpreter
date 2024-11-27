@@ -117,18 +117,14 @@ class Interpreter(InterpreterBase):
     def __call_print(self, args):
         output = ""
         for arg in args:
-            result = self.__eval_expr(arg)  # result is a DeferredValue
-            if isinstance(result, DeferredValue):
-                result = result.evaluate()
+            result = self.__eval_expr(arg, eager=True)  # eager eval
             output += get_printable(result)
         super().output(output)
         return Interpreter.NIL_VALUE
 
     def __call_input(self, name, args):
         if args is not None and len(args) == 1:
-            result = self.__eval_expr(args[0])
-            if isinstance(result, DeferredValue):
-                result = result.evaluate()
+            result = self.__eval_expr(args[0], eager=True) # eager eval
             super().output(get_printable(result))
         elif args is not None and len(args) > 1:
             super().error(
@@ -155,21 +151,24 @@ class Interpreter(InterpreterBase):
                 ErrorType.NAME_ERROR, f"Duplicate definition for variable {var_name}"
             )
 
-    def __eval_expr(self, expr_ast):
-        if expr_ast.elem_type == InterpreterBase.NIL_NODE:
-            return Interpreter.NIL_VALUE
-        if expr_ast.elem_type == InterpreterBase.INT_NODE:
-            return Value(Type.INT, expr_ast.get("val"))
-        if expr_ast.elem_type == InterpreterBase.STRING_NODE:
-            return Value(Type.STRING, expr_ast.get("val"))
-        if expr_ast.elem_type == InterpreterBase.BOOL_NODE:
-            return Value(Type.BOOL, expr_ast.get("val"))
-        if expr_ast.elem_type == InterpreterBase.VAR_NODE:
-            return DeferredValue(expr_ast, self.env.copy_current_env(), self)
-        if expr_ast.elem_type == InterpreterBase.FCALL_NODE:
-            return DeferredValue(expr_ast, self.env.copy_current_env(), self)
-        if expr_ast.elem_type in Interpreter.BIN_OPS or expr_ast.elem_type in [InterpreterBase.NEG_NODE, InterpreterBase.NOT_NODE]:
-            return DeferredValue(expr_ast, self.env.copy_current_env(), self)
+    def __eval_expr(self, expr_ast, eager=False):
+        if eager:
+            return self._eval_expr_actual(expr_ast)
+        else:
+            if expr_ast.elem_type == InterpreterBase.NIL_NODE:
+                return Interpreter.NIL_VALUE
+            if expr_ast.elem_type == InterpreterBase.INT_NODE:
+                return Value(Type.INT, expr_ast.get("val"))
+            if expr_ast.elem_type == InterpreterBase.STRING_NODE:
+                return Value(Type.STRING, expr_ast.get("val"))
+            if expr_ast.elem_type == InterpreterBase.BOOL_NODE:
+                return Value(Type.BOOL, expr_ast.get("val"))
+            if expr_ast.elem_type == InterpreterBase.VAR_NODE:
+                return DeferredValue(expr_ast, self.env.copy_current_env(), self)
+            if expr_ast.elem_type == InterpreterBase.FCALL_NODE:
+                return DeferredValue(expr_ast, self.env.copy_current_env(), self)
+            if expr_ast.elem_type in Interpreter.BIN_OPS or expr_ast.elem_type in [InterpreterBase.NEG_NODE, InterpreterBase.NOT_NODE]:
+                return DeferredValue(expr_ast, self.env.copy_current_env(), self)
 
     # new eval method to eval in given environment
     def _eval_expr_in_env(self, expr_ast, env):
@@ -324,9 +323,7 @@ class Interpreter(InterpreterBase):
 
     def __do_if(self, if_ast):
         cond_ast = if_ast.get("condition")
-        result = self.__eval_expr(cond_ast)
-        if isinstance(result, DeferredValue):
-            result = result.evaluate()
+        result = self.__eval_expr(cond_ast, eager=True)
         if result.type() != Type.BOOL:
             super().error(
                 ErrorType.TYPE_ERROR,
@@ -351,9 +348,7 @@ class Interpreter(InterpreterBase):
 
         self.__run_statement(init_ast)  # initialize counter variable
         while True:
-            run_for = self.__eval_expr(cond_ast)  # check for-loop condition
-            if isinstance(run_for, DeferredValue):
-                run_for = run_for.evaluate()
+            run_for = self.__eval_expr(cond_ast, eager=True)
             if run_for.type() != Type.BOOL:
                 super().error(
                     ErrorType.TYPE_ERROR,
@@ -373,5 +368,5 @@ class Interpreter(InterpreterBase):
         expr_ast = return_ast.get("expression")
         if expr_ast is None:
             return (ExecStatus.RETURN, Interpreter.NIL_VALUE)
-        value_obj = DeferredValue(expr_ast, self.env.copy_current_env(), self)
+        value_obj = self._eval_expr_actual(expr_ast)
         return (ExecStatus.RETURN, value_obj)
