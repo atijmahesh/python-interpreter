@@ -9,6 +9,9 @@ class ExecStatus(Enum):
     CONTINUE = 1
     RETURN = 2
 
+class BException(Exception):
+    def __init__(self, exception_type):
+        self.exception_type = exception_type
 
 # Main interpreter class
 class Interpreter(InterpreterBase):
@@ -30,7 +33,10 @@ class Interpreter(InterpreterBase):
         ast = parse_program(program)
         self.__set_up_function_table(ast)
         self.env = EnvironmentManager()
-        self.__call_func_aux("main", [])
+        try:
+            self.__call_func_aux("main", [])
+        except BException as e:
+            super().error(ErrorType.FAULT_ERROR, f"Exception: {e.exception_type}")
 
     def __set_up_function_table(self, ast):
         self.func_name_to_ast = {}
@@ -54,14 +60,17 @@ class Interpreter(InterpreterBase):
 
     def __run_statements(self, statements):
         self.env.push_block()
-        for statement in statements:
-            if self.trace_output:
-                print(statement)
-            status, return_val = self.__run_statement(statement)
-            if status == ExecStatus.RETURN:
-                self.env.pop_block()
-                return (status, return_val)
-
+        try:
+            for statement in statements:
+                if self.trace_output:
+                    print(statement)
+                status, return_val = self.__run_statement(statement)
+                if status == ExecStatus.RETURN:
+                    self.env.pop_block()
+                    return (status, return_val)
+        except BException as e:
+            self.env.pop_block()
+            raise e
         self.env.pop_block()
         return (ExecStatus.CONTINUE, Interpreter.NIL_VALUE)
 
@@ -80,7 +89,12 @@ class Interpreter(InterpreterBase):
             status, return_val = self.__do_if(statement)
         elif statement.elem_type == InterpreterBase.FOR_NODE:
             status, return_val = self.__do_for(statement)
-
+        elif statement.elem_type == InterpreterBase.RAISE_NODE:
+            self.__do_raise(statement)
+        elif statement.elem_type == InterpreterBase.TRY_NODE:
+            status, return_val = self.__do_try(statement)
+            if status == ExecStatus.RETURN:
+                return (status, return_val)
         return (status, return_val)
     
     def __call_func(self, call_node):
@@ -110,15 +124,22 @@ class Interpreter(InterpreterBase):
             value_obj = DeferredValue(actual_ast, self.env.copy_current_env(), self)
             self.env.create(arg_name, value_obj)
 
-        _, return_val = self.__run_statements(func_ast.get("statements"))
+        try:
+            status, return_val = self.__run_statements(func_ast.get("statements"))
+        except BException as e:
+            self.env.pop_func()
+            raise e
         self.env.pop_func()
         return return_val
 
     def __call_print(self, args):
         output = ""
-        for arg in args:
-            result = self.__eval_expr(arg, eager=True)  # eager eval
-            output += get_printable(result)
+        try:
+            for arg in args:
+                result = self.__eval_expr(arg, eager=True)  # eager eval
+                output += get_printable(result)
+        except BException as e:
+            raise e
         super().output(output)
         return Interpreter.NIL_VALUE
 
@@ -143,7 +164,7 @@ class Interpreter(InterpreterBase):
             super().error(
                 ErrorType.NAME_ERROR, f"Undefined variable {var_name} in assignment"
             )
-    
+
     def __var_def(self, var_ast):
         var_name = var_ast.get("name")
         if not self.env.create(var_name, Interpreter.NIL_VALUE):
@@ -169,16 +190,6 @@ class Interpreter(InterpreterBase):
                 return DeferredValue(expr_ast, self.env.copy_current_env(), self)
             if expr_ast.elem_type in Interpreter.BIN_OPS or expr_ast.elem_type in [InterpreterBase.NEG_NODE, InterpreterBase.NOT_NODE]:
                 return DeferredValue(expr_ast, self.env.copy_current_env(), self)
-
-    # new eval method to eval in given environment
-    def _eval_expr_in_env(self, expr_ast, env):
-        original_env = self.env
-        self.env = env
-        try:
-            result = self._eval_expr_actual(expr_ast)
-        finally:
-            self.env = original_env
-        return result
 
     def _eval_expr_actual(self, expr_ast):
         if expr_ast.elem_type == InterpreterBase.NIL_NODE:
@@ -265,9 +276,7 @@ class Interpreter(InterpreterBase):
         self.op_to_lambda[Type.INT]["*"] = lambda x, y: Value(
             x.type(), x.value() * y.value()
         )
-        self.op_to_lambda[Type.INT]["/"] = lambda x, y: Value(
-            x.type(), x.value() // y.value()
-        )
+        self.op_to_lambda[Type.INT]["/"] = self.__int_divide
         self.op_to_lambda[Type.INT]["=="] = lambda x, y: Value(
             Type.BOOL, x.type() == y.type() and x.value() == y.value()
         )
@@ -321,9 +330,17 @@ class Interpreter(InterpreterBase):
             Type.BOOL, x.type() != y.type() or x.value() != y.value()
         )
 
+    def __int_divide(self, x, y):
+        if y.value() == 0:
+            raise BException("div0")
+        return Value(x.type(), x.value() // y.value())
+
     def __do_if(self, if_ast):
         cond_ast = if_ast.get("condition")
-        result = self.__eval_expr(cond_ast, eager=True)
+        try:
+            result = self.__eval_expr(cond_ast, eager=True)
+        except BException as e:
+            raise e
         if result.type() != Type.BOOL:
             super().error(
                 ErrorType.TYPE_ERROR,
@@ -348,7 +365,10 @@ class Interpreter(InterpreterBase):
 
         self.__run_statement(init_ast)  # initialize counter variable
         while True:
-            run_for = self.__eval_expr(cond_ast, eager=True)
+            try:
+                run_for = self.__eval_expr(cond_ast, eager=True)
+            except BException as e:
+                raise e
             if run_for.type() != Type.BOOL:
                 super().error(
                     ErrorType.TYPE_ERROR,
@@ -370,3 +390,29 @@ class Interpreter(InterpreterBase):
             return (ExecStatus.RETURN, Interpreter.NIL_VALUE)
         value_obj = self._eval_expr_actual(expr_ast)
         return (ExecStatus.RETURN, value_obj)
+
+    def __do_raise(self, raise_ast):
+        expr_ast = raise_ast.get("exception_type")
+        exception_value = self.__eval_expr(expr_ast, eager=True)
+        if exception_value.type() != Type.STRING:
+            super().error(ErrorType.TYPE_ERROR, "Exception message must be a string")
+        raise BException(exception_value.value())
+
+    # CITATION: I used ChatGPT to help me write this function (17 lines)
+    def __do_try(self, try_ast):
+        try:
+            self.env.push_block()
+            status, return_val = self.__run_statements(try_ast.get("statements"))
+            self.env.pop_block()
+            return (status, return_val)
+        except BException as e:
+            self.env.pop_block()
+            catchers = try_ast.get("catchers")
+            for catch_ast in catchers:
+                if catch_ast.get("exception_type") == e.exception_type:
+                    self.env.push_block()
+                    status, return_val = self.__run_statements(catch_ast.get("statements"))
+                    self.env.pop_block()
+                    return (status, return_val)
+            raise e
+    # END CITATION
