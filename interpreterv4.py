@@ -78,7 +78,11 @@ class Interpreter(InterpreterBase):
         status = ExecStatus.CONTINUE
         return_val = None
         if statement.elem_type == InterpreterBase.FCALL_NODE:
-            self.__call_func(statement, eager=True)  
+            func_name = statement.get("name")
+            if func_name in ["print", "inputi", "inputs"]:
+                self.__call_func(statement, eager=True)
+            else:
+                self.__call_func(statement, eager=False)
         elif statement.elem_type == "=":
             self.__assign(statement)
         elif statement.elem_type == InterpreterBase.VAR_DEF_NODE:
