@@ -79,10 +79,8 @@ class Interpreter(InterpreterBase):
         return_val = None
         if statement.elem_type == InterpreterBase.FCALL_NODE:
             func_name = statement.get("name")
-            if func_name in ["print", "inputi", "inputs"]:
                 self.__call_func(statement, eager=True)
-            else:
-                self.__call_func(statement, eager=False)
+            self.__call_func(statement)
         elif statement.elem_type == "=":
             self.__assign(statement)
         elif statement.elem_type == InterpreterBase.VAR_DEF_NODE:
@@ -101,12 +99,12 @@ class Interpreter(InterpreterBase):
                 return (status, return_val)
         return (status, return_val)
     
-    def __call_func(self, call_node, eager=False):
+    def __call_func(self, call_node):
         func_name = call_node.get("name")
         actual_args = call_node.get("args")
-        return self.__call_func_aux(func_name, actual_args, eager=eager)
+        return self.__call_func_aux(func_name, actual_args)
 
-    def __call_func_aux(self, func_name, actual_args, env=None, eager=False):
+    def __call_func_aux(self, func_name, actual_args, env=None):
         if env is None:
             env = self.env
         if func_name == "print":
@@ -126,10 +124,8 @@ class Interpreter(InterpreterBase):
         self.env.push_func()
         for formal_ast, actual_ast in zip(formal_args, actual_args):
             arg_name = formal_ast.get("name")
-            if eager:
-                value_obj = self.__eval_expr(actual_ast, eager=True, env=env)
             else:
-                value_obj = DeferredValue(actual_ast, env.copy_full_env(), self)
+            value_obj = DeferredValue(actual_ast, env.copy_full_env(), self)
             self.env.create(arg_name, value_obj)
 
         try:
@@ -139,15 +135,14 @@ class Interpreter(InterpreterBase):
             raise e
         self.env.pop_func()
         # END CITATION
-        if eager and isinstance(return_val, DeferredValue):
-            return_val = return_val.evaluate()
         return return_val
 
     def __call_print(self, args):
         output = ""
         try:
             for arg in args:
-                result = self.__eval_expr(arg, eager=True)  # eager eval
+                result = self.__eval_expr(arg)
+                result = result.evaluate()
                 output += get_printable(result)
         except BException as e:
             raise e
@@ -156,7 +151,8 @@ class Interpreter(InterpreterBase):
 
     def __call_input(self, name, args):
         if args is not None and len(args) == 1:
-            result = self.__eval_expr(args[0], eager=True) # eager eval
+            result = self.__eval_expr(args[0])
+            result = result.evaluate()
             super().output(get_printable(result))
         elif args is not None and len(args) > 1:
             super().error(
@@ -183,26 +179,23 @@ class Interpreter(InterpreterBase):
                 ErrorType.NAME_ERROR, f"Duplicate definition for variable {var_name}"
             )
 
-    def __eval_expr(self, expr_ast, eager=False, env=None):
+    def __eval_expr(self, expr_ast, env=None):
         if env is None:
             env = self.env
-        if eager:
-            return self._eval_expr_actual(expr_ast, env)
-        else:
-            return DeferredValue(expr_ast, env.copy_full_env(), self)
+        return DeferredValue(expr_ast, env.copy_full_env(), self)
 
     def _eval_expr_actual(self, expr_ast, env=None):
         if env is None:
             env = self.env
         if expr_ast.elem_type == InterpreterBase.NIL_NODE:
             return Interpreter.NIL_VALUE
-        if expr_ast.elem_type == InterpreterBase.INT_NODE:
+        elif expr_ast.elem_type == InterpreterBase.INT_NODE:
             return Value(Type.INT, expr_ast.get("val"))
-        if expr_ast.elem_type == InterpreterBase.STRING_NODE:
+        elif expr_ast.elem_type == InterpreterBase.STRING_NODE:
             return Value(Type.STRING, expr_ast.get("val"))
-        if expr_ast.elem_type == InterpreterBase.BOOL_NODE:
+        elif expr_ast.elem_type == InterpreterBase.BOOL_NODE:
             return Value(Type.BOOL, expr_ast.get("val"))
-        if expr_ast.elem_type == InterpreterBase.VAR_NODE:
+        elif expr_ast.elem_type == InterpreterBase.VAR_NODE:
             var_name = expr_ast.get("name")
             val = env.get(var_name)
             if val is None:
@@ -210,16 +203,21 @@ class Interpreter(InterpreterBase):
             if isinstance(val, DeferredValue):
                 val = val.evaluate()
             return val
-        if expr_ast.elem_type == InterpreterBase.FCALL_NODE:
+        elif expr_ast.elem_type == InterpreterBase.FCALL_NODE:
             func_name = expr_ast.get("name")
             actual_args = expr_ast.get("args")
-            return self.__call_func_aux(func_name, actual_args, env, eager=True)
-        if expr_ast.elem_type in Interpreter.BIN_OPS:
+            return_val = self.__call_func_aux(func_name, actual_args, env)
+            if isinstance(return_val, DeferredValue):
+                return_val = return_val.evaluate()
+            return return_val
+        elif expr_ast.elem_type in Interpreter.BIN_OPS:
             return self.__eval_op(expr_ast, env)
-        if expr_ast.elem_type == InterpreterBase.NEG_NODE:
+        elif expr_ast.elem_type == InterpreterBase.NEG_NODE:
             return self.__eval_unary(expr_ast, Type.INT, lambda x: -1 * x, env)
-        if expr_ast.elem_type == InterpreterBase.NOT_NODE:
+        elif expr_ast.elem_type == InterpreterBase.NOT_NODE:
             return self.__eval_unary(expr_ast, Type.BOOL, lambda x: not x, env)
+        else:
+            super().error(ErrorType.SYNTAX_ERROR, "Unknown expression type")
 
     def __eval_op(self, arith_ast, env):
         left_value_obj = self._eval_expr_actual(arith_ast.get("op1"), env)
@@ -371,7 +369,8 @@ class Interpreter(InterpreterBase):
     def __do_if(self, if_ast):
         cond_ast = if_ast.get("condition")
         try:
-            result = self.__eval_expr(cond_ast, eager=True)
+            result = self.__eval_expr(cond_ast)
+            result = result.evaluate()
         except BException as e:
             raise e
         if result.type() != Type.BOOL:
@@ -399,7 +398,8 @@ class Interpreter(InterpreterBase):
         self.__run_statement(init_ast)  # initialize counter variable
         while True:
             try:
-                run_for = self.__eval_expr(cond_ast, eager=True)
+                run_for = self.__eval_expr(cond_ast)
+                run_for = run_for.evaluate()
             except BException as e:
                 raise e
             if run_for.type() != Type.BOOL:
@@ -421,12 +421,13 @@ class Interpreter(InterpreterBase):
         expr_ast = return_ast.get("expression")
         if expr_ast is None:
             return (ExecStatus.RETURN, Interpreter.NIL_VALUE)
-        value_obj = self.__eval_expr(expr_ast, eager=False)
+        value_obj = self.__eval_expr(expr_ast)
         return (ExecStatus.RETURN, value_obj)
 
     def __do_raise(self, raise_ast):
         expr_ast = raise_ast.get("exception_type")
-        exception_value = self.__eval_expr(expr_ast, eager=True)
+        exception_value = self.__eval_expr(expr_ast)
+        exception_value = exception_value.evaluate()
         if exception_value.type() != Type.STRING:
             super().error(ErrorType.TYPE_ERROR, "Exception message must be a string")
         raise BException(exception_value.value())
