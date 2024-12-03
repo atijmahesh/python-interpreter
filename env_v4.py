@@ -1,57 +1,39 @@
-import copy
 # The EnvironmentManager class keeps a mapping between each variable name (aka symbol)
 # in a brewin program and the Value object, which stores a type, and a value.
 class EnvironmentManager:
-    def __init__(self, environment=None):
-        if environment is None:
-            self.environment = []
-        else:
-            self.environment = environment
+    def __init__(self):
+        # stack of envs
+        self.env_stack = []
 
-    # returns a VariableDef object
-    def get(self, symbol):
-        cur_func_env = self.environment[-1]
-        for env in reversed(cur_func_env):
-            if symbol in env:
-                return env[symbol]
-
+    def get(self, var_name):
+        for env in reversed(self.env_stack):
+            if var_name in env:
+                return env[var_name]
         return None
 
-    def set(self, symbol, value):
-        cur_func_env = self.environment[-1]
-        for env in reversed(cur_func_env):
-            if symbol in env:
-                env[symbol] = value
+    def set(self, var_name, value):
+        for env in reversed(self.env_stack):
+            if var_name in env:
+                env[var_name] = value
                 return True
-
         return False
 
-    # create a new symbol in the top-most environment, regardless of whether that symbol exists
-    # in a lower environment
-    def create(self, symbol, value):
-        cur_func_env = self.environment[-1]
-        if symbol in cur_func_env[-1]:   # symbol already defined in current scope
-            return False
-        cur_func_env[-1][symbol] = value
-        return True
-
-    # used when we enter a new function - start with empty dictionary to hold parameters.
     def push_func(self):
-        self.environment.append([{}])  # [[...]] -> [[...], [{}]]
+        self.env_stack.append({})
+    def pop_func(self):
+        self.env_stack.pop()
 
     def push_block(self):
-        cur_func_env = self.environment[-1]
-        cur_func_env.append({})  # [[...],[{....}] -> [[...],[{...}, {}]]
+        self.env_stack.append({})
 
     def pop_block(self):
-        cur_func_env = self.environment[-1]
-        cur_func_env.pop() 
+        self.env_stack.pop()
 
-    # used when we exit a nested block to discard the environment for that block
-    def pop_func(self):
-        self.environment.pop()
+    def create(self, var_name, value):
+        if var_name in self.env_stack[-1]:
+            return False
+        self.env_stack[-1][var_name] = value
+        return True
 
-    def copy_current_env(self):
-        # return a deep copy
-        return EnvironmentManager(environment=copy.deepcopy(self.environment))
-
+    def copy_full_env(self):
+        return [env.copy() for env in self.env_stack]
