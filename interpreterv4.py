@@ -122,9 +122,8 @@ class Interpreter(InterpreterBase):
                 f"Function {func_ast.get('name')} with {len(actual_args)} args not found",
             )
 
-        # create the new activation record
+        # CITATION: USED Chat GPT to held me debug these env lines (16 lines)
         self.env.push_func()
-        # and add the formal arguments to the activation record
         for formal_ast, actual_ast in zip(formal_args, actual_args):
             arg_name = formal_ast.get("name")
             if eager:
@@ -139,6 +138,9 @@ class Interpreter(InterpreterBase):
             self.env.pop_func()
             raise e
         self.env.pop_func()
+        # END CITATION
+        if eager and isinstance(return_val, DeferredValue):
+            return_val = return_val.evaluate()
         return return_val
 
     def __call_print(self, args):
@@ -211,7 +213,7 @@ class Interpreter(InterpreterBase):
         if expr_ast.elem_type == InterpreterBase.FCALL_NODE:
             func_name = expr_ast.get("name")
             actual_args = expr_ast.get("args")
-            return self.__call_func_aux(func_name, actual_args, env, eager=False)
+            return self.__call_func_aux(func_name, actual_args, env, eager=True)
         if expr_ast.elem_type in Interpreter.BIN_OPS:
             return self.__eval_op(expr_ast, env)
         if expr_ast.elem_type == InterpreterBase.NEG_NODE:
@@ -419,7 +421,7 @@ class Interpreter(InterpreterBase):
         expr_ast = return_ast.get("expression")
         if expr_ast is None:
             return (ExecStatus.RETURN, Interpreter.NIL_VALUE)
-        value_obj = self._eval_expr_actual(expr_ast)
+        value_obj = self.__eval_expr(expr_ast, eager=False)
         return (ExecStatus.RETURN, value_obj)
 
     def __do_raise(self, raise_ast):
